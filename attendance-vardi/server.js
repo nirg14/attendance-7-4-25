@@ -202,9 +202,9 @@ app.get('*', (req, res) => {
 
 // התחברות למסד נתונים והפעלת השרת
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://username:password@cluster0.mongodb.net/attendance?retryWrites=true&w=majority';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost/attendance';
 
-mongoose.connect(MONGO_URI, { 
+mongoose.connect(MONGODB_URI, { 
   useNewUrlParser: true,
   useUnifiedTopology: true
 })
