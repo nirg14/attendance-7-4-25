@@ -210,101 +210,23 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     
     // קריאת קובץ הנתונים
     await new Promise((resolve, reject) => {
-      let headers = null;
-      
       fs.createReadStream(filePath)
-        .pipe(csv())
-        .on('headers', (headerRow) => {
-          console.log('כותרות הקובץ:', headerRow);
-          headers = headerRow;
-          
-          // מציאת העמודות המתאימות
-          const idColumn = headers.find(h => 
-            h.includes('תלמיד') ||
-            h.includes('ID') ||
-            h.includes('ת.ז.')
-          );
-          
-          const firstNameColumn = headers.find(h => 
-            h === 'פרטי' ||
-            h.includes('שם') && !h.includes('משפחה')
-          );
-          
-          const lastNameColumn = headers.find(h => 
-            h === 'משפחה' ||
-            h.includes('שם') && !h.includes('פרטי')
-          );
-          
-          const morningCourseColumn = headers.find(h => 
-            h.includes('רצועה') && (h.includes('ראשונה') || h.includes('1')) ||
-            h.includes('בוקר') ||
-            h.includes('morning')
-          );
-          
-          const afternoonCourseColumn = headers.find(h => 
-            h.includes('רצועה') && (h.includes('שניה') || h.includes('שנייה') || h.includes('2')) ||
-            h.includes('צהריים') ||
-            h.includes('afternoon')
-          );
-          
-          console.log('עמודות שנמצאו:', {
-            idColumn,
-            firstNameColumn,
-            lastNameColumn,
-            morningCourseColumn,
-            afternoonCourseColumn
-          });
-          
-          if (!idColumn || !firstNameColumn || !lastNameColumn || !morningCourseColumn || !afternoonCourseColumn) {
-            reject(new Error('לא נמצאו כל העמודות הנדרשות בקובץ'));
-          }
+        .pipe(csv({
+          separator: ',',
+          mapHeaders: ({ header }) => header.trim()
+        }))
+        .on('headers', (headers) => {
+          console.log('כותרות הקובץ:', headers);
         })
         .on('data', (data) => {
           console.log('נתוני שורה גולמיים:', data);
           
-          // מציאת העמודות המתאימות
-          const idColumn = headers.find(h => 
-            h.includes('תלמיד') ||
-            h.includes('ID') ||
-            h.includes('ת.ז.')
-          );
-          
-          const firstNameColumn = headers.find(h => 
-            h === 'פרטי' ||
-            h.includes('שם') && !h.includes('משפחה')
-          );
-          
-          const lastNameColumn = headers.find(h => 
-            h === 'משפחה' ||
-            h.includes('שם') && !h.includes('פרטי')
-          );
-          
-          const morningCourseColumn = headers.find(h => 
-            h.includes('רצועה') && (h.includes('ראשונה') || h.includes('1')) ||
-            h.includes('בוקר') ||
-            h.includes('morning')
-          );
-          
-          const afternoonCourseColumn = headers.find(h => 
-            h.includes('רצועה') && (h.includes('שניה') || h.includes('שנייה') || h.includes('2')) ||
-            h.includes('צהריים') ||
-            h.includes('afternoon')
-          );
-          
           // בדיקת תקינות השדות הנדרשים
-          const studentId = parseInt(data[idColumn]?.replace(/[^\d]/g, ''));
-          const firstName = data[firstNameColumn]?.trim();
-          const lastName = data[lastNameColumn]?.trim();
-          let morningCourse = data[morningCourseColumn]?.trim();
-          let afternoonCourse = data[afternoonCourseColumn]?.trim();
-
-          // טיפול בערכים מיוחדים
-          if (morningCourse?.includes('*לא ידוע*')) {
-            morningCourse = 'לא משובץ';
-          }
-          if (afternoonCourse?.includes('*לא ידוע*')) {
-            afternoonCourse = 'לא משובץ';
-          }
+          const studentId = parseInt(data['מספר תלמיד']);
+          const firstName = data['שם פרטי']?.trim();
+          const lastName = data['שם משפחה']?.trim();
+          const morningCourse = data['קורס רצועה ראשונה']?.trim();
+          const afternoonCourse = data['קורס רצועה שנייה']?.trim();
 
           console.log('נתונים מעובדים:', {
             studentId,
@@ -315,7 +237,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
           });
 
           if (!studentId || isNaN(studentId)) {
-            console.error('מספר תלמיד לא תקין:', data[idColumn]);
+            console.error('מספר תלמיד לא תקין:', data['מספר תלמיד']);
             return;
           }
 
@@ -353,6 +275,14 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         });
     });
 
+    if (students.length === 0) {
+      throw new Error('לא נמצאו תלמידים בקובץ');
+    }
+
+    if (courses.size === 0) {
+      throw new Error('לא נמצאו קורסים בקובץ');
+    }
+
     // מחיקת הקובץ הזמני
     await fs.promises.unlink(filePath);
     console.log('הקובץ הזמני נמחק');
@@ -373,11 +303,34 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       afternoonCourse: courseMap.get(student.afternoonCourse)
     }));
 
-    const processedCourses = Array.from(courses).map((courseName, index) => ({
-      id: courseMap.get(courseName),
-      name: courseName,
-      timeSlot: index < courses.size / 2 ? 1 : 2
-    }));
+    // יצירת מיפוי קורסים למספרים עם רצועות נכונות
+    const morningCourses = new Set();
+    const afternoonCourses = new Set();
+    
+    // מיון קורסים לרצועות
+    students.forEach(student => {
+      if (student.morningCourse) {
+        morningCourses.add(student.morningCourse);
+      }
+      if (student.afternoonCourse) {
+        afternoonCourses.add(student.afternoonCourse);
+      }
+    });
+
+    const processedCourses = [
+      // קורסי רצועה ראשונה
+      ...Array.from(morningCourses).map(courseName => ({
+        id: courseMap.get(courseName),
+        name: courseName,
+        timeSlot: 1
+      })),
+      // קורסי רצועה שנייה
+      ...Array.from(afternoonCourses).map(courseName => ({
+        id: courseMap.get(courseName),
+        name: courseName,
+        timeSlot: 2
+      }))
+    ];
 
     console.log('קורסים מעובדים:', processedCourses);
     console.log('תלמידים מעובדים:', processedStudents);
