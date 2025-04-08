@@ -62,8 +62,17 @@ const AttendanceSystem = () => {
     const fetchData = async () => {
       try {
         // טעינת קורסים
-        const coursesResponse = await axios.get('/api/courses');
-        setCourses(coursesResponse.data);
+        const [slot1Response, slot2Response] = await Promise.all([
+          axios.get('/api/courses/slot1'),
+          axios.get('/api/courses/slot2')
+        ]);
+        
+        const allCourses = [
+          ...slot1Response.data.map(course => ({ ...course, timeSlot: 1 })),
+          ...slot2Response.data.map(course => ({ ...course, timeSlot: 2 }))
+        ];
+        
+        setCourses(allCourses);
         
         // טעינת תלמידים
         const studentsResponse = await axios.get('/api/students');

@@ -65,7 +65,27 @@ const Attendance = mongoose.model('Attendance', attendanceSchema);
 // קבלת כל הקורסים
 app.get('/api/courses', async (req, res) => {
   try {
-    const courses = await Course.find();
+    const courses = await Course.find().sort({ timeSlot: 1, name: 1 });
+    res.json(courses);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// קבלת קורסי רצועה ראשונה
+app.get('/api/courses/slot1', async (req, res) => {
+  try {
+    const courses = await Course.find({ timeSlot: 1 }).sort({ name: 1 });
+    res.json(courses);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// קבלת קורסי רצועה שנייה
+app.get('/api/courses/slot2', async (req, res) => {
+  try {
+    const courses = await Course.find({ timeSlot: 2 }).sort({ name: 1 });
     res.json(courses);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -127,24 +147,6 @@ app.post('/api/attendance', async (req, res) => {
 });
 
 // נתיבים לאתחול נתונים
-
-// הוספת קורסים
-app.post('/api/init/courses', async (req, res) => {
-  try {
-    await Course.deleteMany({});
-    const courses = await Course.insertMany([
-      { id: 1, name: 'מתמטיקה מתקדמת', timeSlot: 1 },
-      { id: 2, name: 'פיזיקה קוונטית', timeSlot: 1 },
-      { id: 3, name: 'תכנות ואלגוריתמים', timeSlot: 1 },
-      { id: 4, name: 'ביולוגיה מולקולרית', timeSlot: 2 },
-      { id: 5, name: 'אמנות ויצירה', timeSlot: 2 },
-      { id: 6, name: 'מוזיקה ותיאוריה', timeSlot: 2 }
-    ]);
-    res.status(201).json(courses);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-});
 
 // הוספת תלמידים
 app.post('/api/init/students', async (req, res) => {
