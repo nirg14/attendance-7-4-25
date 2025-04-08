@@ -220,18 +220,18 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
           
           // מציאת העמודות המתאימות
           const idColumn = headers.find(h => 
-            h.includes('תלמיד') && h.includes('מספר') ||
+            h.includes('תלמיד') ||
             h.includes('ID') ||
             h.includes('ת.ז.')
           );
           
           const firstNameColumn = headers.find(h => 
-            h.includes('פרטי') ||
+            h === 'פרטי' ||
             h.includes('שם') && !h.includes('משפחה')
           );
           
           const lastNameColumn = headers.find(h => 
-            h.includes('משפחה') ||
+            h === 'משפחה' ||
             h.includes('שם') && !h.includes('פרטי')
           );
           
@@ -242,7 +242,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
           );
           
           const afternoonCourseColumn = headers.find(h => 
-            h.includes('רצועה') && (h.includes('שנייה') || h.includes('2')) ||
+            h.includes('רצועה') && (h.includes('שניה') || h.includes('שנייה') || h.includes('2')) ||
             h.includes('צהריים') ||
             h.includes('afternoon')
           );
@@ -264,18 +264,18 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
           
           // מציאת העמודות המתאימות
           const idColumn = headers.find(h => 
-            h.includes('תלמיד') && h.includes('מספר') ||
+            h.includes('תלמיד') ||
             h.includes('ID') ||
             h.includes('ת.ז.')
           );
           
           const firstNameColumn = headers.find(h => 
-            h.includes('פרטי') ||
+            h === 'פרטי' ||
             h.includes('שם') && !h.includes('משפחה')
           );
           
           const lastNameColumn = headers.find(h => 
-            h.includes('משפחה') ||
+            h === 'משפחה' ||
             h.includes('שם') && !h.includes('פרטי')
           );
           
@@ -286,17 +286,25 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
           );
           
           const afternoonCourseColumn = headers.find(h => 
-            h.includes('רצועה') && (h.includes('שנייה') || h.includes('2')) ||
+            h.includes('רצועה') && (h.includes('שניה') || h.includes('שנייה') || h.includes('2')) ||
             h.includes('צהריים') ||
             h.includes('afternoon')
           );
           
           // בדיקת תקינות השדות הנדרשים
-          const studentId = parseInt(data[idColumn]);
+          const studentId = parseInt(data[idColumn]?.replace(/[^\d]/g, ''));
           const firstName = data[firstNameColumn]?.trim();
           const lastName = data[lastNameColumn]?.trim();
-          const morningCourse = data[morningCourseColumn]?.trim();
-          const afternoonCourse = data[afternoonCourseColumn]?.trim();
+          let morningCourse = data[morningCourseColumn]?.trim();
+          let afternoonCourse = data[afternoonCourseColumn]?.trim();
+
+          // טיפול בערכים מיוחדים
+          if (morningCourse?.includes('*לא ידוע*')) {
+            morningCourse = 'לא משובץ';
+          }
+          if (afternoonCourse?.includes('*לא ידוע*')) {
+            afternoonCourse = 'לא משובץ';
+          }
 
           console.log('נתונים מעובדים:', {
             studentId,
