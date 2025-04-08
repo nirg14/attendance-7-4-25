@@ -8,6 +8,12 @@ const csv = require('csv-parser');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// יצירת תיקיית העלאות אם היא לא קיימת
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir);
+}
+
 // הגדרת מסד הנתונים
 const db = new sqlite3.Database('attendance.db');
 
@@ -75,7 +81,7 @@ const slot2Courses = [
 ];
 
 // הגדרת multer לטיפול בהעלאת קבצים
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: uploadsDir });
 
 // Middleware
 app.use(express.json());
