@@ -1,5 +1,5 @@
 const express = require('express');
-const Database = require('better-sqlite3');
+const mongoose = require('mongoose');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -14,36 +14,40 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
 }
 
-// הגדרת מסד הנתונים
-const db = new Database('attendance.db');
+// התחברות למונגו
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/attendance', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+});
 
-// יצירת טבלאות אם הן לא קיימות
-db.exec(`CREATE TABLE IF NOT EXISTS courses (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL,
-  timeSlot INTEGER NOT NULL
-)`);
+// הגדרת מודלים
+const Course = mongoose.model('Course', {
+  id: Number,
+  name: String,
+  timeSlot: Number
+});
 
-db.exec(`CREATE TABLE IF NOT EXISTS students (
-  id INTEGER PRIMARY KEY,
-  studentId TEXT NOT NULL,
-  firstName TEXT NOT NULL,
-  lastName TEXT NOT NULL,
-  morningCourseId INTEGER,
-  afternoonCourseId INTEGER,
-  FOREIGN KEY (morningCourseId) REFERENCES courses (id),
-  FOREIGN KEY (afternoonCourseId) REFERENCES courses (id)
-)`);
+const Student = mongoose.model('Student', {
+  studentId: String,
+  firstName: String,
+  lastName: String,
+  morningCourseId: Number,
+  afternoonCourseId: Number
+});
 
-db.exec(`CREATE TABLE IF NOT EXISTS attendance (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  studentId INTEGER NOT NULL,
-  courseId INTEGER NOT NULL,
-  date TEXT NOT NULL,
-  status TEXT NOT NULL,
-  FOREIGN KEY (studentId) REFERENCES students (id),
-  FOREIGN KEY (courseId) REFERENCES courses (id)
-)`);
+const Attendance = mongoose.model('Attendance', {
+  studentId: Number,
+  courseId: Number,
+  date: String,
+  status: String
+});
+
+// הגדרת multer לטיפול בהעלאת קבצים
+const upload = multer({ dest: uploadsDir });
+
+// Middleware
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'client/build')));
 
 // הגדרת רשימות הקורסים לכל רצועה
 const slot1Courses = [
@@ -78,12 +82,62 @@ const slot2Courses = [
   '*לא ידוע2*'
 ];
 
-// הגדרת multer לטיפול בהעלאת קבצים
-const upload = multer({ dest: uploadsDir });
+// קבלת רשימת הקורסים לפי רצועה
+app.get('/api/courses/slot1', async (req, res) => {
+  try {
+    const courses = await Course.find({ timeSlot: 1 });
+    res.json(courses);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
-// Middleware
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'client/build')));
+app.get('/api/courses/slot2', async (req, res) => {
+  try {
+    const courses = await Course.find({ timeSlot: 2 });
+    res.json(courses);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// קבלת רשימת התלמידים
+app.get('/api/students', async (req, res) => {
+  try {
+    const students = await Student.find();
+    res.json(students);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// קבלת נתוני נוכחות לתאריך מסוים
+app.get('/api/attendance/:date', async (req, res) => {
+  try {
+    const date = req.params.date;
+    const attendance = await Attendance.find({ date });
+    res.json(attendance);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// עדכון נוכחות
+app.post('/api/attendance', express.json(), async (req, res) => {
+  try {
+    const { studentId, courseId, date, present } = req.body;
+    
+    await Attendance.findOneAndUpdate(
+      { studentId, courseId, date },
+      { status: present ? 'present' : 'absent' },
+      { upsert: true }
+    );
+    
+    res.json({ message: 'Attendance updated successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // טיפול בהעלאת קובץ CSV
 app.post('/api/upload', upload.single('file'), async (req, res) => {
@@ -93,7 +147,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
   try {
     // בדיקה אם יש קורסים במערכת
-    const existingCourses = db.prepare('SELECT * FROM courses').all();
+    const existingCourses = await Course.find();
 
     // אם אין קורסים, נכניס את הרשימה המלאה
     if (existingCourses.length === 0) {
@@ -112,21 +166,27 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       });
 
       // הכנסת הקורסים מחדש עם הרצועות הנכונות
-      const insertCourse = db.prepare('INSERT INTO courses (id, name, timeSlot) VALUES (?, ?, ?)');
-      
       // קורסי רצועה ראשונה
-      slot1Courses.forEach(courseName => {
+      for (const courseName of slot1Courses) {
         const isInBothSlots = slot2Courses.includes(courseName);
         const courseKey = isInBothSlots ? `${courseName}_1` : courseName;
-        insertCourse.run(courseMap.get(courseKey), courseName, 1);
-      });
+        await Course.create({
+          id: courseMap.get(courseKey),
+          name: courseName,
+          timeSlot: 1
+        });
+      }
       
       // קורסי רצועה שנייה
-      slot2Courses.forEach(courseName => {
+      for (const courseName of slot2Courses) {
         const isInBothSlots = slot1Courses.includes(courseName);
         const courseKey = isInBothSlots ? `${courseName}_2` : courseName;
-        insertCourse.run(courseMap.get(courseKey), courseName, 2);
-      });
+        await Course.create({
+          id: courseMap.get(courseKey),
+          name: courseName,
+          timeSlot: 2
+        });
+      }
     }
 
     // קריאת הקובץ שהועלה
@@ -177,29 +237,21 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     });
 
     // מחיקת התלמידים הקיימים
-    db.prepare('DELETE FROM students').run();
+    await Student.deleteMany({});
 
     // הכנסת התלמידים החדשים
-    const insertStudent = db.prepare(`
-      INSERT INTO students (studentId, firstName, lastName, morningCourseId, afternoonCourseId)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-
     for (const student of students) {
       // מציאת ה-ID של הקורסים
-      const morningCourseId = db.prepare('SELECT id FROM courses WHERE name = ? AND timeSlot = 1')
-        .get(student.morningCourse)?.id;
+      const morningCourse = await Course.findOne({ name: student.morningCourse, timeSlot: 1 });
+      const afternoonCourse = await Course.findOne({ name: student.afternoonCourse, timeSlot: 2 });
 
-      const afternoonCourseId = db.prepare('SELECT id FROM courses WHERE name = ? AND timeSlot = 2')
-        .get(student.afternoonCourse)?.id;
-
-      insertStudent.run(
-        student.studentId,
-        student.firstName,
-        student.lastName,
-        morningCourseId,
-        afternoonCourseId
-      );
+      await Student.create({
+        studentId: student.studentId,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        morningCourseId: morningCourse?.id,
+        afternoonCourseId: afternoonCourse?.id
+      });
     }
 
     // מחיקת הקובץ שהועלה
@@ -216,63 +268,9 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// קבלת רשימת הקורסים לפי רצועה
-app.get('/api/courses/slot1', (req, res) => {
-  try {
-    const courses = db.prepare('SELECT * FROM courses WHERE timeSlot = 1').all();
-    res.json(courses);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/api/courses/slot2', (req, res) => {
-  try {
-    const courses = db.prepare('SELECT * FROM courses WHERE timeSlot = 2').all();
-    res.json(courses);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// קבלת רשימת התלמידים
-app.get('/api/students', (req, res) => {
-  try {
-    const students = db.prepare('SELECT * FROM students').all();
-    res.json(students);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// קבלת נתוני נוכחות לתאריך מסוים
-app.get('/api/attendance/:date', (req, res) => {
-  try {
-    const date = req.params.date;
-    const attendance = db.prepare('SELECT * FROM attendance WHERE date = ?').all(date);
-    res.json(attendance);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// עדכון נוכחות
-app.post('/api/attendance', express.json(), (req, res) => {
-  try {
-    const { studentId, courseId, date, present } = req.body;
-    
-    db.prepare('INSERT OR REPLACE INTO attendance (studentId, courseId, date, status) VALUES (?, ?, ?, ?)')
-      .run(studentId, courseId, date, present ? 'present' : 'absent');
-    
-    res.json({ message: 'Attendance updated successfully' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // קבלת רשימת הקורסים
 app.get('/courses', (req, res) => {
-  db.all('SELECT * FROM courses ORDER BY timeSlot, name', (err, rows) => {
+  Course.find({}, (err, rows) => {
     if (err) {
       res.status(500).json({ error: err.message });
       return;
@@ -283,15 +281,7 @@ app.get('/courses', (req, res) => {
 
 // קבלת רשימת התלמידים
 app.get('/students', (req, res) => {
-  db.all(`
-    SELECT s.*, 
-           c1.name as morningCourseName,
-           c2.name as afternoonCourseName
-    FROM students s
-    LEFT JOIN courses c1 ON s.morningCourseId = c1.id
-    LEFT JOIN courses c2 ON s.afternoonCourseId = c2.id
-    ORDER BY s.lastName, s.firstName
-  `, (err, rows) => {
+  Student.find({}, (err, rows) => {
     if (err) {
       res.status(500).json({ error: err.message });
       return;
@@ -304,28 +294,20 @@ app.get('/students', (req, res) => {
 app.post('/attendance', (req, res) => {
   const { studentId, courseId, date, status } = req.body;
   
-  db.run('INSERT INTO attendance (studentId, courseId, date, status) VALUES (?, ?, ?, ?)',
-    [studentId, courseId, date, status],
-    function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json({ id: this.lastID });
-    });
+  Attendance.create({ studentId, courseId, date, status }, (err, attendance) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json({ id: attendance._id });
+  });
 });
 
 // קבלת נוכחות
 app.get('/attendance', (req, res) => {
   const { date, courseId } = req.query;
   
-  db.all(`
-    SELECT a.*, s.firstName, s.lastName, s.studentId
-    FROM attendance a
-    JOIN students s ON a.studentId = s.id
-    WHERE a.date = ? AND a.courseId = ?
-    ORDER BY s.lastName, s.firstName
-  `, [date, courseId], (err, rows) => {
+  Attendance.find({ date, courseId }, (err, rows) => {
     if (err) {
       res.status(500).json({ error: err.message });
       return;
