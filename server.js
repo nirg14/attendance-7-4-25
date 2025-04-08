@@ -190,61 +190,80 @@ app.post('/api/init/user', async (req, res) => {
 // נקודת קצה להעלאת נתונים מ-CSV
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
-    console.log('Received file upload request');
-    console.log('Request body:', req.body);
-    console.log('Request file:', req.file);
+    console.log('התקבלה בקשה להעלאת קובץ');
+    console.log('גוף הבקשה:', req.body);
+    console.log('קובץ:', req.file);
 
     if (!req.file) {
-      console.log('No file received');
+      console.log('לא התקבל קובץ');
       return res.status(400).json({ error: 'לא נבחר קובץ' });
     }
 
     const filePath = req.file.path;
-    console.log('File saved at:', filePath);
+    console.log('הקובץ נשמר בנתיב:', filePath);
     
     const courses = new Set();
     const students = [];
     const courseMap = new Map();
 
-    console.log('Starting to process CSV file...');
+    console.log('מתחיל לעבד את קובץ ה-CSV...');
     
     // קריאת קובץ הנתונים
     await new Promise((resolve, reject) => {
       fs.createReadStream(filePath)
         .pipe(csv())
         .on('data', (data) => {
-          console.log('Processing row:', data);
+          console.log('מעבד שורה:', data);
+          
+          // בדיקת תקינות השדות הנדרשים
+          const studentId = parseInt(data['מספר תלמיד']);
+          const firstName = data['שם פרטי']?.trim();
+          const lastName = data['שם משפחה']?.trim();
+          const morningCourse = data['קורס רצועה ראשונה']?.trim();
+          const afternoonCourse = data['קורס רצועה שנייה']?.trim();
+
+          if (!studentId || isNaN(studentId)) {
+            console.error('מספר תלמיד לא תקין:', data['מספר תלמיד']);
+            return;
+          }
+
+          if (!firstName || !lastName) {
+            console.error('שם תלמיד חסר:', studentId);
+            return;
+          }
+
+          if (!morningCourse || !afternoonCourse) {
+            console.error('קורסים חסרים עבור תלמיד:', studentId);
+            return;
+          }
+
           // הוספת קורסים למפה
-          if (data['קורס רצועה ראשונה']) {
-            courses.add(data['קורס רצועה ראשונה']);
-          }
-          if (data['קורס רצועה שנייה']) {
-            courses.add(data['קורס רצועה שנייה']);
-          }
+          courses.add(morningCourse);
+          courses.add(afternoonCourse);
 
           // הוספת תלמיד
           students.push({
-            id: parseInt(data['מספר תלמיד']),
-            name: `${data['שם פרטי']} ${data['שם משפחה']}`,
-            morningCourse: data['קורס רצועה ראשונה'],
-            afternoonCourse: data['קורס רצועה שנייה']
+            id: studentId,
+            name: `${firstName} ${lastName}`,
+            morningCourse,
+            afternoonCourse
           });
         })
         .on('end', () => {
-          console.log('Finished processing CSV file');
-          console.log('Found courses:', Array.from(courses));
-          console.log('Found students:', students.length);
+          console.log('סיום עיבוד קובץ CSV');
+          console.log('קורסים שנמצאו:', Array.from(courses));
+          console.log('תלמידים שנמצאו:', students.length);
           resolve();
         })
         .on('error', (error) => {
-          console.error('Error processing CSV:', error);
+          console.error('שגיאה בעיבוד CSV:', error);
           reject(error);
         });
     });
 
     // מחיקת הקובץ הזמני
     await fs.promises.unlink(filePath);
-    console.log('Temporary file deleted');
+    console.log('הקובץ הזמני נמחק');
 
     // יצירת מיפוי קורסים למספרים
     let courseNumber = 1;
@@ -252,7 +271,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       courseMap.set(courseName, courseNumber++);
     }
 
-    console.log('Course mapping:', Object.fromEntries(courseMap));
+    console.log('מיפוי קורסים:', Object.fromEntries(courseMap));
 
     // המרת שמות קורסים למספרים
     const processedStudents = students.map(student => ({
@@ -268,19 +287,19 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       timeSlot: index < courses.size / 2 ? 1 : 2
     }));
 
-    console.log('Processed courses:', processedCourses);
-    console.log('Processed students:', processedStudents);
+    console.log('קורסים מעובדים:', processedCourses);
+    console.log('תלמידים מעובדים:', processedStudents);
 
     // מחיקת נתונים קיימים
-    console.log('Deleting existing data...');
+    console.log('מוחק נתונים קיימים...');
     await Course.deleteMany({});
     await Student.deleteMany({});
 
     // הוספת נתונים חדשים
-    console.log('Inserting new data...');
+    console.log('מכניס נתונים חדשים...');
     await Course.insertMany(processedCourses);
     await Student.insertMany(processedStudents);
-    console.log('Data inserted successfully');
+    console.log('הנתונים הוכנסו בהצלחה');
 
     res.json({ 
       success: true, 
