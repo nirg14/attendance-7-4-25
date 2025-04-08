@@ -37,57 +37,279 @@
   }
 }
 
-.login-container {
-  max-width: 400px;
-  margin: 50px auto;
-  padding: 20px;
-  border: 1px solid #ddd;
-  border-radius: 5px;
-  background-color: #fff;
-  direction: rtl;
+/* סגנונות רספונסיביים */
+@media (max-width: 768px) {
+  .rtl {
+    padding: 10px;
+  }
+
+  .max-w-4xl {
+    max-width: 100%;
+  }
+
+  .course-button {
+    width: 100%;
+    margin: 5px 0;
+    padding: 12px;
+    font-size: 16px;
+  }
+
+  .attendance-table {
+    width: 100%;
+    font-size: 14px;
+  }
+
+  .attendance-table th,
+  .attendance-table td {
+    padding: 8px 4px;
+  }
+
+  .student-name-cell {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .date-picker {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+  }
+
+  .alert {
+    padding: 10px;
+    font-size: 14px;
+    margin: 10px 0;
+  }
+
+  .text-2xl {
+    font-size: 1.5rem;
+  }
+
+  .mb-4 {
+    margin-bottom: 1rem;
+  }
+
+  .p-4 {
+    padding: 1rem;
+  }
+
+  .course-button.bg-blue-500,
+  .course-button.bg-green-500 {
+    transform: scale(1.02);
+  }
 }
 
-.login-container h2 {
-  text-align: center;
-  margin-bottom: 20px;
-  color: #333;
+/* סגנונות לכפתורי קורסים */
+.course-button {
+  min-width: 120px;
+  padding: 10px 15px;
+  margin: 5px;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+  font-weight: 500;
 }
 
-.form-group {
-  margin-bottom: 15px;
+.course-button.bg-blue-500 {
+  background-color: #3b82f6 !important;
+  color: white !important;
+  border-color: #2563eb;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+  transform: scale(1.05);
 }
 
-.form-group label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: bold;
+.course-button.bg-green-500 {
+  background-color: #10b981 !important;
+  color: white !important;
+  border-color: #059669;
+  box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);
+  transform: scale(1.05);
 }
 
-.form-group input {
-  width: 100%;
+.course-button:hover {
+  transform: scale(1.05);
+}
+
+.course-button.bg-white {
+  background-color: #f3f4f6;
+  color: #4b5563;
+  border-color: #d1d5db;
+}
+
+.course-button.bg-white:hover {
+  background-color: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+/* סגנונות לטבלת נוכחות */
+.attendance-table {
+  width: 80%;
+  margin: 20px auto;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.attendance-table th,
+.attendance-table td {
   padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 16px;
-}
-
-.error-message {
-  color: #dc3545;
-  margin-bottom: 15px;
   text-align: center;
+  border: 1px solid #e2e8f0;
 }
 
-button {
-  width: 100%;
-  padding: 10px;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  border-radius: 4px;
+.attendance-table th {
+  background-color: #f7fafc;
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.student-name-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  padding: 8px;
+}
+
+.student-name-cell span {
+  font-size: 14px;
+  font-weight: 500;
+  color: #2d3748;
+}
+
+/* סגנונות להודעות התראה */
+.alert {
+  padding: 15px;
+  margin: 15px 0;
+  border-radius: 8px;
   font-size: 16px;
+}
+
+/* סגנונות לתאריך */
+.date-picker {
+  width: 100%;
+  max-width: 300px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+}
+
+/* סגנונות ל-checkbox */
+.attendance-checkbox-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.attendance-checkbox-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   cursor: pointer;
 }
 
-button:hover {
-  background-color: #0056b3;
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 25px;
+  height: 25px;
+  border: 2px solid #4a5568;
+  border-radius: 50%;
+  background-color: white;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.3s ease-in-out;
+}
+
+input[type="checkbox"]:checked {
+  background-color: #48bb78;
+  border-color: #48bb78;
+  transform: scale(1.05);
+}
+
+input[type="checkbox"]:checked::after {
+  content: '✓';
+  position: absolute;
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+input[type="checkbox"]:hover {
+  border-color: #48bb78;
+  box-shadow: 0 0 0 2px rgba(72, 187, 120, 0.2);
+  transform: scale(1.05);
+}
+
+input[type="checkbox"]:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(72, 187, 120, 0.3);
+}
+
+/* סגנונות לטקסט של הנוכחות */
+.attendance-status {
+  font-size: 20px;
+  font-weight: 600;
+  transition: color 0.3s ease;
+}
+
+input[type="checkbox"]:checked ~ .attendance-status {
+  color: #48bb78;
+}
+
+/* סגנונות לדוח נוכחות */
+.attendance-report {
+  margin-top: 30px;
+  padding: 20px;
+  border-radius: 8px;
+  background-color: #f8f9fa;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  width: 80%;
+  margin: 20px auto;
+}
+
+.attendance-report h3 {
+  color: #2d3748;
+  font-size: 18px;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+.report-table th,
+.report-table td {
+  padding: 8px;
+  text-align: center;
+  border: 1px solid #e2e8f0;
+}
+
+.report-table th {
+  background-color: #f7fafc;
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.report-table .warning {
+  color: #c53030;
+  font-weight: 600;
+}
+
+.report-table .no-warnings {
+  color: #48bb78;
+  text-align: center;
+  font-style: italic;
+  padding: 20px;
 }

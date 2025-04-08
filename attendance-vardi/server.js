@@ -3,25 +3,29 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
+const csv = require('csv-parser');
+const fs = require('fs');
+const multer = require('multer');
 require('dotenv').config();
 
 // אתחול אפליקציית Express
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(bodyParser.json());
 
 // שירות קבצים סטטיים מ-build של React
 app.use(express.static(path.join(__dirname, 'client/build')));
 
-// מודלים למסד הנתונים
-const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
-  password: { type: String, required: true }
-});
+const upload = multer({ dest: 'uploads/' });
 
+// מודלים למסד הנתונים
 const courseSchema = new mongoose.Schema({
   id: Number,
   name: String,
@@ -42,31 +46,9 @@ const attendanceSchema = new mongoose.Schema({
   present: Boolean
 });
 
-const User = mongoose.model('User', userSchema);
 const Course = mongoose.model('Course', courseSchema);
 const Student = mongoose.model('Student', studentSchema);
 const Attendance = mongoose.model('Attendance', attendanceSchema);
-
-// נתיבי התחברות
-app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body;
-  
-  try {
-    const user = await User.findOne({ username });
-    if (!user) {
-      return res.status(401).json({ message: 'שם משתמש או סיסמה שגויים' });
-    }
-    
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: 'שם משתמש או סיסמה שגויים' });
-    }
-    
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
 
 // נתיבי API
 
@@ -192,6 +174,85 @@ app.post('/api/init/user', async (req, res) => {
     res.json({ message: 'משתמש ראשוני נוצר בהצלחה' });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+// נקודת קצה להעלאת נתונים מ-CSV
+app.post('/api/upload-data', upload.single('dataFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'נדרש קובץ נתונים' });
+    }
+
+    const courses = new Set();
+    const students = [];
+    const courseMap = new Map(); // מפה לשמירת מיפוי בין שמות קורסים למספרים
+
+    // קריאת קובץ הנתונים
+    await new Promise((resolve, reject) => {
+      fs.createReadStream(req.file.path)
+        .pipe(csv())
+        .on('data', (data) => {
+          // הוספת קורסים למפה
+          if (data['קורס רצועה ראשונה']) {
+            courses.add(data['קורס רצועה ראשונה']);
+          }
+          if (data['קורס רצועה שנייה']) {
+            courses.add(data['קורס רצועה שנייה']);
+          }
+
+          // הוספת תלמיד
+          students.push({
+            id: parseInt(data['מספר תלמיד']),
+            name: `${data['שם פרטי']} ${data['שם משפחה']}`,
+            morningCourse: data['קורס רצועה ראשונה'],
+            afternoonCourse: data['קורס רצועה שנייה']
+          });
+        })
+        .on('end', resolve)
+        .on('error', reject);
+    });
+
+    // יצירת מיפוי קורסים למספרים
+    let courseNumber = 1;
+    for (const courseName of courses) {
+      courseMap.set(courseName, courseNumber++);
+    }
+
+    // המרת שמות קורסים למספרים
+    const processedStudents = students.map(student => ({
+      id: student.id,
+      name: student.name,
+      morningCourse: courseMap.get(student.morningCourse),
+      afternoonCourse: courseMap.get(student.afternoonCourse)
+    }));
+
+    const processedCourses = Array.from(courses).map((courseName, index) => ({
+      id: courseMap.get(courseName),
+      name: courseName,
+      timeSlot: index < courses.size / 2 ? 1 : 2 // חלוקה אוטומטית לרצועות
+    }));
+
+    // מחיקת נתונים קיימים
+    await Course.deleteMany({});
+    await Student.deleteMany({});
+
+    // הוספת נתונים חדשים
+    await Course.insertMany(processedCourses);
+    await Student.insertMany(processedStudents);
+
+    // מחיקת קובץ זמני
+    fs.unlinkSync(req.file.path);
+
+    res.json({ 
+      success: true, 
+      message: 'הנתונים הועלו בהצלחה',
+      courses: processedCourses,
+      students: processedStudents
+    });
+  } catch (error) {
+    console.error('שגיאה בהעלאת נתונים:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

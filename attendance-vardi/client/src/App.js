@@ -2,54 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import './App.css';
 
-const LoginForm = ({ onLogin }) => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const response = await axios.post('/api/login', { username, password });
-      if (response.data.success) {
-        onLogin();
-      }
-    } catch (error) {
-      setError(error.response?.data?.message || 'שגיאה בהתחברות');
-    }
-  };
-
-  return (
-    <div className="login-container">
-      <h2>התחברות למערכת</h2>
-      <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label>שם משתמש:</label>
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label>סיסמה:</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-        {error && <div className="error-message">{error}</div>}
-        <button type="submit">התחבר</button>
-      </form>
-    </div>
-  );
-};
+// הגדרת ה-base URL של השרת
+axios.defaults.baseURL = window.location.origin;
 
 const AttendanceSystem = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [courses, setCourses] = useState([]);
   const [students, setStudents] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState(null);
@@ -58,6 +14,7 @@ const AttendanceSystem = () => {
   const [alertMessage, setAlertMessage] = useState('');
   const [alertType, setAlertType] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [uploadStatus, setUploadStatus] = useState('');
 
   // בדיקת תלמידים שנוכחים בבוקר אך לא אחר הצהריים
   const checkAfternoonAttendance = useCallback(() => {
@@ -139,7 +96,6 @@ const AttendanceSystem = () => {
     const present = !isStudentPresent(studentId, courseId);
     
     try {
-      // שליחת עדכון לשרת
       await axios.post('/api/attendance', {
         date,
         studentId,
@@ -147,7 +103,6 @@ const AttendanceSystem = () => {
         present
       });
       
-      // עדכון מקומי
       const newAttendanceData = { ...attendanceData };
       if (!newAttendanceData[key]) {
         newAttendanceData[key] = { present };
@@ -156,8 +111,6 @@ const AttendanceSystem = () => {
       }
       
       setAttendanceData(newAttendanceData);
-      
-      // בדיקת תלמידים שנוכחים בבוקר אך לא אחר הצהריים
       checkAfternoonAttendance();
     } catch (error) {
       console.error('Error updating attendance:', error);
@@ -188,9 +141,37 @@ const AttendanceSystem = () => {
     }
   };
 
-  if (!isLoggedIn) {
-    return <LoginForm onLogin={() => setIsLoggedIn(true)} />;
-  }
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) {
+      setAlertMessage('נדרש קובץ נתונים');
+      setAlertType('warning');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('dataFile', file);
+
+    try {
+      setIsLoading(true);
+      const response = await axios.post('/api/upload-data', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      if (response.data.success) {
+        setAlertMessage('הנתונים הועלו בהצלחה');
+        setAlertType('success');
+        window.location.reload();
+      }
+    } catch (error) {
+      setAlertMessage('שגיאה בהעלאת הנתונים: ' + error.message);
+      setAlertType('warning');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (isLoading) {
     return <div className="rtl text-center p-8">טוען נתונים...</div>;
@@ -198,206 +179,168 @@ const AttendanceSystem = () => {
 
   return (
     <div className="rtl text-right p-4 bg-gray-100 min-h-screen">
-      <h1 className="text-2xl font-bold mb-4 text-blue-600">מערכת מעקב נוכחות - בית ספר למחוננים</h1>
-      
-      {/* כפתור אתחול נתונים */}
-      <button 
-        onClick={initializeData}
-        className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-1 px-2 rounded text-sm mb-4"
-      >
-        אתחל נתונים לדוגמה
-      </button>
-      
-      {/* בחירת תאריך */}
-      <div className="mb-6">
-        <label className="block mb-2 font-semibold">תאריך:</label>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="p-2 border rounded"
-        />
-      </div>
-      
-      {/* רצועות זמן וקורסים */}
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">בחר קורס:</h2>
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-2xl font-bold mb-4 text-blue-600 text-center">מערכת מעקב נוכחות - בית ספר למחוננים</h1>
         
-        <div className="mb-4">
-          <h3 className="font-semibold text-blue-500">רצועה 1 (בוקר):</h3>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {courses
-              .filter(course => course.timeSlot === 1)
-              .map(course => (
-                <button
-                  key={course.id}
-                  onClick={() => selectCourse(course)}
-                  className={`p-2 border rounded ${selectedCourse?.id === course.id ? 'bg-blue-500 text-white' : 'bg-white hover:bg-blue-100'}`}
-                >
-                  {course.name}
-                </button>
-              ))
-            }
+        {alertMessage && (
+          <div className={`alert ${alertType === 'warning' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
+            {alertMessage}
+          </div>
+        )}
+        
+        <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+          <h2 className="text-xl font-semibold mb-4 text-center">עדכון נתוני המערכת</h2>
+          <div className="mb-4">
+            <label className="block mb-2 font-semibold">העלאת קובץ נתונים חדש:</label>
+            <div className="flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6">
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleFileUpload}
+                className="block w-full text-sm text-gray-500
+                  file:mr-4 file:py-2 file:px-4
+                  file:rounded-full file:border-0
+                  file:text-sm file:font-semibold
+                  file:bg-blue-50 file:text-blue-700
+                  hover:file:bg-blue-100"
+              />
+            </div>
+            <p className="text-sm text-gray-500 mt-2 text-center">
+              העלה קובץ CSV עם העמודות הבאות:<br />
+              מספר תלמיד, שם משפחה, שם פרטי, קורס רצועה ראשונה, קורס רצועה שנייה
+            </p>
           </div>
         </div>
         
-        <div className="mb-4">
-          <h3 className="font-semibold text-green-500">רצועה 2 (צהריים):</h3>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {courses
-              .filter(course => course.timeSlot === 2)
-              .map(course => (
-                <button
-                  key={course.id}
-                  onClick={() => selectCourse(course)}
-                  className={`p-2 border rounded ${selectedCourse?.id === course.id ? 'bg-green-500 text-white' : 'bg-white hover:bg-green-100'}`}
-                >
-                  {course.name}
-                </button>
-              ))
-            }
-          </div>
+        <div className="mb-6">
+          <label className="block mb-2 font-semibold">תאריך:</label>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="date-picker w-full"
+          />
         </div>
-      </div>
-      
-      {/* התראה על תלמידים חסרים */}
-      {alertMessage && (
-        <div className={`p-4 mb-4 rounded ${alertType === 'warning' ? 'bg-yellow-100 border-yellow-400 text-yellow-800' : ''}`}>
-          {alertMessage}
-        </div>
-      )}
-      
-      {/* רשימת תלמידים בקורס הנבחר */}
-      {selectedCourse && (
-        <div className="bg-white p-4 rounded shadow">
-          <h2 className="text-xl font-semibold mb-4">
-            {`נוכחות: ${selectedCourse.name} (${selectedCourse.timeSlot === 1 ? 'בוקר' : 'צהריים'})`}
-          </h2>
+        
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold mb-2 text-center">בחר קורס:</h2>
           
-          {selectedCourse.students.length === 0 ? (
-            <p>אין תלמידים רשומים לקורס זה.</p>
-          ) : (
-            <table className="w-full border-collapse">
+          <div className="mb-4">
+            <h3 className="font-semibold text-blue-500 text-center">רצועה 1 (בוקר):</h3>
+            <div className="flex flex-wrap justify-center gap-2 mt-2">
+              {courses
+                .filter(course => course.timeSlot === 1)
+                .map(course => (
+                  <button
+                    key={course.id}
+                    onClick={() => selectCourse(course)}
+                    className={`course-button ${selectedCourse?.id === course.id ? 'bg-blue-500 text-white' : 'bg-white hover:bg-blue-100'}`}
+                  >
+                    {course.name}
+                  </button>
+                ))
+              }
+            </div>
+          </div>
+          
+          <div className="mb-4">
+            <h3 className="font-semibold text-green-500 text-center">רצועה 2 (צהריים):</h3>
+            <div className="flex flex-wrap justify-center gap-2 mt-2">
+              {courses
+                .filter(course => course.timeSlot === 2)
+                .map(course => (
+                  <button
+                    key={course.id}
+                    onClick={() => selectCourse(course)}
+                    className={`course-button ${selectedCourse?.id === course.id ? 'bg-green-500 text-white' : 'bg-white hover:bg-green-100'}`}
+                  >
+                    {course.name}
+                  </button>
+                ))
+              }
+            </div>
+          </div>
+        </div>
+        
+        {selectedCourse && (
+          <div className="overflow-x-auto">
+            <table className="attendance-table">
               <thead>
-                <tr className="bg-gray-200">
-                  <th className="p-2 text-right">שם התלמיד</th>
-                  <th className="p-2 text-center">נוכחות</th>
-                  <th className="p-2 text-center">סטטוס כללי</th>
+                <tr>
+                  <th className="border p-2">שם תלמיד</th>
+                  <th className="border p-2">נוכחות</th>
                 </tr>
               </thead>
               <tbody>
-                {selectedCourse.students.map(student => {
-                  // בדיקה האם התלמיד נוכח גם בקורס השני
-                  const otherCourseId = selectedCourse.timeSlot === 1 ? student.afternoonCourse : student.morningCourse;
-                  const isPresentInThisCourse = isStudentPresent(student.id, selectedCourse.id);
-                  const isPresentInOtherCourse = isStudentPresent(student.id, otherCourseId);
-                  
-                  // קביעת סטטוס כללי
-                  let status = '';
-                  let statusClass = '';
-                  
-                  if (selectedCourse.timeSlot === 1) {
-                    if (isPresentInThisCourse && !isPresentInOtherCourse) {
-                      status = 'חסר אחה"צ';
-                      statusClass = 'text-yellow-500';
-                    } else if (isPresentInThisCourse && isPresentInOtherCourse) {
-                      status = 'נוכח בשני הקורסים';
-                      statusClass = 'text-green-500';
-                    }
-                  } else { // צהריים
-                    if (!isPresentInOtherCourse && isPresentInThisCourse) {
-                      status = 'חסר בבוקר';
-                      statusClass = 'text-orange-500';
-                    } else if (isPresentInOtherCourse && isPresentInThisCourse) {
-                      status = 'נוכח בשני הקורסים';
-                      statusClass = 'text-green-500';
-                    }
-                  }
-                  
-                  return (
-                    <tr key={student.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3">{student.name}</td>
-                      <td className="p-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isPresentInThisCourse}
-                          onChange={() => toggleAttendance(student.id, selectedCourse.id, selectedCourse.timeSlot)}
-                          className="w-5 h-5"
-                        />
-                      </td>
-                      <td className={`p-3 text-center ${statusClass} font-medium`}>
-                        {status}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-      
-      {/* תצוגת דוח יומי - כל התלמידים החסרים */}
-      <div className="mt-8 bg-white p-4 rounded shadow">
-        <h2 className="text-xl font-semibold mb-4">דוח נוכחות יומי ({date})</h2>
-        
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-gray-200">
-                <th className="p-2 text-right">שם התלמיד</th>
-                <th className="p-2 text-center">נוכחות בוקר</th>
-                <th className="p-2 text-center">נוכחות צהריים</th>
-                <th className="p-2 text-center">סטטוס</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map(student => {
-                const morningPresent = isStudentPresent(student.id, student.morningCourse);
-                const afternoonPresent = isStudentPresent(student.id, student.afternoonCourse);
-                
-                let status = '';
-                let statusClass = '';
-                
-                if (morningPresent && afternoonPresent) {
-                  status = 'נוכח מלא';
-                  statusClass = 'text-green-500';
-                } else if (morningPresent && !afternoonPresent) {
-                  status = 'חסר אחה"צ';
-                  statusClass = 'text-yellow-500';
-                } else if (!morningPresent && afternoonPresent) {
-                  status = 'חסר בבוקר';
-                  statusClass = 'text-orange-500';
-                } else {
-                  status = 'לא נוכח';
-                  statusClass = 'text-red-500';
-                }
-                
-                // מצא את שמות הקורסים
-                const morningCourseName = courses.find(c => c.id === student.morningCourse)?.name;
-                const afternoonCourseName = courses.find(c => c.id === student.afternoonCourse)?.name;
-                
-                return (
-                  <tr key={student.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3">{student.name}</td>
-                    <td className="p-3 text-center">
-                      <span title={morningCourseName}>
-                        {morningPresent ? '✓' : '✗'}
-                      </span>
+                {selectedCourse.students?.map(student => (
+                  <tr key={student.id}>
+                    <td className="student-name-cell">
+                      <span>{student.name}</span>
                     </td>
-                    <td className="p-3 text-center">
-                      <span title={afternoonCourseName}>
-                        {afternoonPresent ? '✓' : '✗'}
-                      </span>
-                    </td>
-                    <td className={`p-3 text-center ${statusClass} font-medium`}>
-                      {status}
+                    <td className="border p-2">
+                      <div className="attendance-checkbox-container">
+                        <label className="attendance-checkbox-label">
+                          <input
+                            type="checkbox"
+                            checked={isStudentPresent(student.id, selectedCourse.id)}
+                            onChange={() => toggleAttendance(student.id, selectedCourse.id, selectedCourse.timeSlot)}
+                          />
+                        </label>
+                      </div>
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="attendance-report">
+          <h3>חסרים ברצועה 2</h3>
+          {(() => {
+            const missingStudents = students.filter(student => {
+              const morningKey = `${student.id}_${student.morningCourse}_${date}`;
+              const afternoonKey = `${student.id}_${student.afternoonCourse}_${date}`;
+              
+              return (
+                attendanceData[morningKey]?.present === true && 
+                (!attendanceData[afternoonKey] || attendanceData[afternoonKey].present === false)
+              );
+            });
+
+            if (missingStudents.length > 0) {
+              return (
+                <table className="report-table">
+                  <thead>
+                    <tr>
+                      <th>שם תלמיד</th>
+                      <th>קורס ברצועה 1</th>
+                      <th>קורס ברצועה 2</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {missingStudents.map(student => (
+                      <tr key={student.id} className="warning">
+                        <td>{student.name}</td>
+                        <td>{courses.find(c => c.id === student.morningCourse)?.name}</td>
+                        <td>{courses.find(c => c.id === student.afternoonCourse)?.name}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            } else {
+              return (
+                <table className="report-table">
+                  <tbody>
+                    <tr>
+                      <td className="no-warnings">אין תלמידים נוכחים ברצועה 1 ונעדרים ברצועה 2</td>
+                    </tr>
+                  </tbody>
+                </table>
+              );
+            }
+          })()}
         </div>
       </div>
     </div>
