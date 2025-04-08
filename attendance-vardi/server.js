@@ -178,11 +178,30 @@ app.post('/api/init/user', async (req, res) => {
 });
 
 // נקודת קצה להעלאת נתונים מ-CSV
-app.post('/api/upload-data', upload.single('dataFile'), async (req, res) => {
+app.post('/api/upload', multer({ dest: 'uploads/' }).single('file'), async (req, res) => {
   try {
+    console.log('Received file upload request');
+    console.log('Request body:', req.body);
+    console.log('Request file:', req.file);
+
     if (!req.file) {
-      return res.status(400).json({ success: false, message: 'נדרש קובץ נתונים' });
+      console.log('No file received');
+      return res.status(400).json({ error: 'לא נבחר קובץ' });
     }
+
+    const filePath = req.file.path;
+    console.log('File saved at:', filePath);
+    
+    const csvData = await fs.promises.readFile(filePath, 'utf8');
+    console.log('CSV data read successfully');
+    
+    // מחיקת הקובץ לאחר הקריאה
+    await fs.promises.unlink(filePath);
+    console.log('Temporary file deleted');
+
+    const lines = csvData.split('\n');
+    const headers = lines[0].split(',').map(h => h.trim());
+    console.log('CSV headers:', headers);
 
     const courses = new Set();
     const students = [];
@@ -190,7 +209,7 @@ app.post('/api/upload-data', upload.single('dataFile'), async (req, res) => {
 
     // קריאת קובץ הנתונים
     await new Promise((resolve, reject) => {
-      fs.createReadStream(req.file.path)
+      fs.createReadStream(filePath)
         .pipe(csv())
         .on('data', (data) => {
           // הוספת קורסים למפה
@@ -240,9 +259,6 @@ app.post('/api/upload-data', upload.single('dataFile'), async (req, res) => {
     // הוספת נתונים חדשים
     await Course.insertMany(processedCourses);
     await Student.insertMany(processedStudents);
-
-    // מחיקת קובץ זמני
-    fs.unlinkSync(req.file.path);
 
     res.json({ 
       success: true, 

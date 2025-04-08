@@ -150,23 +150,23 @@ const AttendanceSystem = () => {
     }
 
     const formData = new FormData();
-    formData.append('dataFile', file);
+    formData.append('file', file);
 
     try {
       setIsLoading(true);
-      const response = await axios.post('/api/upload-data', formData, {
+      const response = await axios.post('/api/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       });
       
-      if (response.data.success) {
+      if (response.data.message) {
         setAlertMessage('הנתונים הועלו בהצלחה');
         setAlertType('success');
         window.location.reload();
       }
     } catch (error) {
-      setAlertMessage('שגיאה בהעלאת הנתונים: ' + error.message);
+      setAlertMessage('שגיאה בהעלאת הנתונים: ' + (error.response?.data?.error || error.message));
       setAlertType('warning');
     } finally {
       setIsLoading(false);
