@@ -1,5 +1,5 @@
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -15,37 +15,35 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 // הגדרת מסד הנתונים
-const db = new sqlite3.Database('attendance.db');
+const db = new Database('attendance.db');
 
 // יצירת טבלאות אם הן לא קיימות
-db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS courses (
-    id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL,
-    timeSlot INTEGER NOT NULL
-  )`);
+db.exec(`CREATE TABLE IF NOT EXISTS courses (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  timeSlot INTEGER NOT NULL
+)`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS students (
-    id INTEGER PRIMARY KEY,
-    studentId TEXT NOT NULL,
-    firstName TEXT NOT NULL,
-    lastName TEXT NOT NULL,
-    morningCourseId INTEGER,
-    afternoonCourseId INTEGER,
-    FOREIGN KEY (morningCourseId) REFERENCES courses (id),
-    FOREIGN KEY (afternoonCourseId) REFERENCES courses (id)
-  )`);
+db.exec(`CREATE TABLE IF NOT EXISTS students (
+  id INTEGER PRIMARY KEY,
+  studentId TEXT NOT NULL,
+  firstName TEXT NOT NULL,
+  lastName TEXT NOT NULL,
+  morningCourseId INTEGER,
+  afternoonCourseId INTEGER,
+  FOREIGN KEY (morningCourseId) REFERENCES courses (id),
+  FOREIGN KEY (afternoonCourseId) REFERENCES courses (id)
+)`);
 
-  db.run(`CREATE TABLE IF NOT EXISTS attendance (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    studentId INTEGER NOT NULL,
-    courseId INTEGER NOT NULL,
-    date TEXT NOT NULL,
-    status TEXT NOT NULL,
-    FOREIGN KEY (studentId) REFERENCES students (id),
-    FOREIGN KEY (courseId) REFERENCES courses (id)
-  )`);
-});
+db.exec(`CREATE TABLE IF NOT EXISTS attendance (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  studentId INTEGER NOT NULL,
+  courseId INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  status TEXT NOT NULL,
+  FOREIGN KEY (studentId) REFERENCES students (id),
+  FOREIGN KEY (courseId) REFERENCES courses (id)
+)`);
 
 // הגדרת רשימות הקורסים לכל רצועה
 const slot1Courses = [
@@ -95,12 +93,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
   try {
     // בדיקה אם יש קורסים במערכת
-    const existingCourses = await new Promise((resolve, reject) => {
-      db.all('SELECT * FROM courses', (err, rows) => {
-        if (err) reject(err);
-        else resolve(rows);
-      });
-    });
+    const existingCourses = db.prepare('SELECT * FROM courses').all();
 
     // אם אין קורסים, נכניס את הרשימה המלאה
     if (existingCourses.length === 0) {
@@ -119,40 +112,21 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       });
 
       // הכנסת הקורסים מחדש עם הרצועות הנכונות
-      const coursesToInsert = [
-        // קורסי רצועה ראשונה
-        ...slot1Courses.map(courseName => {
-          const isInBothSlots = slot2Courses.includes(courseName);
-          const courseKey = isInBothSlots ? `${courseName}_1` : courseName;
-          return {
-            id: courseMap.get(courseKey),
-            name: courseName,
-            timeSlot: 1
-          };
-        }),
-        // קורסי רצועה שנייה
-        ...slot2Courses.map(courseName => {
-          const isInBothSlots = slot1Courses.includes(courseName);
-          const courseKey = isInBothSlots ? `${courseName}_2` : courseName;
-          return {
-            id: courseMap.get(courseKey),
-            name: courseName,
-            timeSlot: 2
-          };
-        })
-      ];
-
-      // הכנסת הקורסים החדשים
-      for (const course of coursesToInsert) {
-        await new Promise((resolve, reject) => {
-          db.run('INSERT INTO courses (id, name, timeSlot) VALUES (?, ?, ?)', 
-            [course.id, course.name, course.timeSlot], 
-            (err) => {
-              if (err) reject(err);
-              else resolve();
-            });
-        });
-      }
+      const insertCourse = db.prepare('INSERT INTO courses (id, name, timeSlot) VALUES (?, ?, ?)');
+      
+      // קורסי רצועה ראשונה
+      slot1Courses.forEach(courseName => {
+        const isInBothSlots = slot2Courses.includes(courseName);
+        const courseKey = isInBothSlots ? `${courseName}_1` : courseName;
+        insertCourse.run(courseMap.get(courseKey), courseName, 1);
+      });
+      
+      // קורסי רצועה שנייה
+      slot2Courses.forEach(courseName => {
+        const isInBothSlots = slot1Courses.includes(courseName);
+        const courseKey = isInBothSlots ? `${courseName}_2` : courseName;
+        insertCourse.run(courseMap.get(courseKey), courseName, 2);
+      });
     }
 
     // קריאת הקובץ שהועלה
@@ -203,40 +177,29 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     });
 
     // מחיקת התלמידים הקיימים
-    await new Promise((resolve, reject) => {
-      db.run('DELETE FROM students', (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    db.prepare('DELETE FROM students').run();
 
     // הכנסת התלמידים החדשים
+    const insertStudent = db.prepare(`
+      INSERT INTO students (studentId, firstName, lastName, morningCourseId, afternoonCourseId)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
     for (const student of students) {
       // מציאת ה-ID של הקורסים
-      const morningCourseId = await new Promise((resolve, reject) => {
-        db.get('SELECT id FROM courses WHERE name = ? AND timeSlot = 1', 
-          [student.morningCourse], (err, row) => {
-            if (err) reject(err);
-            else resolve(row ? row.id : null);
-          });
-      });
+      const morningCourseId = db.prepare('SELECT id FROM courses WHERE name = ? AND timeSlot = 1')
+        .get(student.morningCourse)?.id;
 
-      const afternoonCourseId = await new Promise((resolve, reject) => {
-        db.get('SELECT id FROM courses WHERE name = ? AND timeSlot = 2', 
-          [student.afternoonCourse], (err, row) => {
-            if (err) reject(err);
-            else resolve(row ? row.id : null);
-          });
-      });
+      const afternoonCourseId = db.prepare('SELECT id FROM courses WHERE name = ? AND timeSlot = 2')
+        .get(student.afternoonCourse)?.id;
 
-      await new Promise((resolve, reject) => {
-        db.run('INSERT INTO students (studentId, firstName, lastName, morningCourseId, afternoonCourseId) VALUES (?, ?, ?, ?, ?)',
-          [student.studentId, student.firstName, student.lastName, morningCourseId, afternoonCourseId],
-          (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-      });
+      insertStudent.run(
+        student.studentId,
+        student.firstName,
+        student.lastName,
+        morningCourseId,
+        afternoonCourseId
+      );
     }
 
     // מחיקת הקובץ שהועלה
@@ -255,63 +218,56 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
 // קבלת רשימת הקורסים לפי רצועה
 app.get('/api/courses/slot1', (req, res) => {
-  db.all('SELECT * FROM courses WHERE timeSlot = 1', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
+  try {
+    const courses = db.prepare('SELECT * FROM courses WHERE timeSlot = 1').all();
+    res.json(courses);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/api/courses/slot2', (req, res) => {
-  db.all('SELECT * FROM courses WHERE timeSlot = 2', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
+  try {
+    const courses = db.prepare('SELECT * FROM courses WHERE timeSlot = 2').all();
+    res.json(courses);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // קבלת רשימת התלמידים
 app.get('/api/students', (req, res) => {
-  db.all('SELECT * FROM students', (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
+  try {
+    const students = db.prepare('SELECT * FROM students').all();
+    res.json(students);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // קבלת נתוני נוכחות לתאריך מסוים
 app.get('/api/attendance/:date', (req, res) => {
-  const date = req.params.date;
-  db.all('SELECT * FROM attendance WHERE date = ?', [date], (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
+  try {
+    const date = req.params.date;
+    const attendance = db.prepare('SELECT * FROM attendance WHERE date = ?').all(date);
+    res.json(attendance);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // עדכון נוכחות
 app.post('/api/attendance', express.json(), (req, res) => {
-  const { studentId, courseId, date, present } = req.body;
-  
-  db.run(
-    'INSERT OR REPLACE INTO attendance (studentId, courseId, date, status) VALUES (?, ?, ?, ?)',
-    [studentId, courseId, date, present ? 'present' : 'absent'],
-    (err) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json({ message: 'Attendance updated successfully' });
-    }
-  );
+  try {
+    const { studentId, courseId, date, present } = req.body;
+    
+    db.prepare('INSERT OR REPLACE INTO attendance (studentId, courseId, date, status) VALUES (?, ?, ?, ?)')
+      .run(studentId, courseId, date, present ? 'present' : 'absent');
+    
+    res.json({ message: 'Attendance updated successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // קבלת רשימת הקורסים
