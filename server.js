@@ -212,8 +212,11 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     await new Promise((resolve, reject) => {
       fs.createReadStream(filePath)
         .pipe(csv())
+        .on('headers', (headers) => {
+          console.log('כותרות הקובץ:', headers);
+        })
         .on('data', (data) => {
-          console.log('מעבד שורה:', data);
+          console.log('נתוני שורה גולמיים:', data);
           
           // בדיקת תקינות השדות הנדרשים
           const studentId = parseInt(data['מספר תלמיד']);
@@ -221,6 +224,14 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
           const lastName = data['שם משפחה']?.trim();
           const morningCourse = data['קורס רצועה ראשונה']?.trim();
           const afternoonCourse = data['קורס רצועה שנייה']?.trim();
+
+          console.log('נתונים מעובדים:', {
+            studentId,
+            firstName,
+            lastName,
+            morningCourse,
+            afternoonCourse
+          });
 
           if (!studentId || isNaN(studentId)) {
             console.error('מספר תלמיד לא תקין:', data['מספר תלמיד']);
