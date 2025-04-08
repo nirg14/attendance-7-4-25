@@ -235,17 +235,48 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       '*לא ידוע2*'
     ];
 
-    const courses = new Set();
-    const students = [];
+    // קבלת הקורסים הקיימים מהמסד נתונים
+    const existingCourses = await Course.find();
     const courseMap = new Map();
-    let courseNumber = 1;
 
-    // יצירת מיפוי קורסים למספרים
-    [...slot1Courses, ...slot2Courses].forEach(courseName => {
-      if (!courseMap.has(courseName)) {
-        courseMap.set(courseName, courseNumber++);
-      }
-    });
+    // אם אין קורסים במערכת, נכניס אותם
+    if (existingCourses.length === 0) {
+      console.log('אין קורסים במערכת, מכניס את רשימת הקורסים המלאה...');
+      let courseNumber = 1;
+      
+      // יצירת מיפוי קורסים למספרים
+      [...slot1Courses, ...slot2Courses].forEach(courseName => {
+        if (!courseMap.has(courseName)) {
+          courseMap.set(courseName, courseNumber++);
+        }
+      });
+
+      const coursesToInsert = [
+        // קורסי רצועה ראשונה
+        ...slot1Courses.map(courseName => ({
+          id: courseMap.get(courseName),
+          name: courseName,
+          timeSlot: 1
+        })),
+        // קורסי רצועה שנייה
+        ...slot2Courses.map(courseName => ({
+          id: courseMap.get(courseName),
+          name: courseName,
+          timeSlot: 2
+        }))
+      ];
+
+      await Course.insertMany(coursesToInsert);
+      console.log('הקורסים הוכנסו בהצלחה');
+    } else {
+      console.log('משתמש בקורסים הקיימים במערכת');
+      // יצירת מיפוי מהקורסים הקיימים
+      existingCourses.forEach(course => {
+        courseMap.set(course.name, course.id);
+      });
+    }
+
+    const students = [];
 
     console.log('מתחיל לעבד את קובץ ה-CSV...');
     
@@ -303,14 +334,11 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
             return;
           }
 
-          courses.add(morningCourse);
-          courses.add(afternoonCourse);
-
           students.push({
             id: studentId,
             name: `${firstName} ${lastName}`,
-            morningCourse,
-            afternoonCourse
+            morningCourse: courseMap.get(morningCourse),
+            afternoonCourse: courseMap.get(afternoonCourse)
           });
         })
         .on('end', resolve)
@@ -325,49 +353,16 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     await fs.promises.unlink(filePath);
     console.log('הקובץ הזמני נמחק');
 
-    // יצירת רשימת הקורסים המלאה עם הרצועות הנכונות
-    const processedCourses = [
-      // קורסי רצועה ראשונה
-      ...slot1Courses.map(courseName => ({
-        id: courseMap.get(courseName),
-        name: courseName,
-        timeSlot: 1
-      })),
-      // קורסי רצועה שנייה
-      ...slot2Courses.map(courseName => ({
-        id: courseMap.get(courseName),
-        name: courseName,
-        timeSlot: 2
-      }))
-    ];
-
-    // המרת שמות קורסים למספרים עבור תלמידים
-    const processedStudents = students.map(student => ({
-      id: student.id,
-      name: student.name,
-      morningCourse: courseMap.get(student.morningCourse),
-      afternoonCourse: courseMap.get(student.afternoonCourse)
-    }));
-
-    console.log('קורסים מעובדים:', processedCourses);
-    console.log('תלמידים מעובדים:', processedStudents);
-
-    // מחיקת נתונים קיימים
-    console.log('מוחק נתונים קיימים...');
-    await Course.deleteMany({});
+    // מחיקת רשימת התלמידים הקיימת והכנסת הרשימה החדשה
+    console.log('מעדכן את רשימת התלמידים...');
     await Student.deleteMany({});
-
-    // הוספת נתונים חדשים
-    console.log('מכניס נתונים חדשים...');
-    await Course.insertMany(processedCourses);
-    await Student.insertMany(processedStudents);
-    console.log('הנתונים הוכנסו בהצלחה');
+    await Student.insertMany(students);
+    console.log('רשימת התלמידים עודכנה בהצלחה');
 
     res.json({ 
       success: true, 
       message: 'הנתונים הועלו בהצלחה',
-      courses: processedCourses,
-      students: processedStudents
+      students
     });
   } catch (error) {
     console.error('שגיאה בהעלאת נתונים:', error);
