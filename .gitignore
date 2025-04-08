@@ -6,4 +6,5 @@ yarn-debug.log*
 yarn-error.log*
 uploads/
 client/node_modules/
-client/build/ 
+client/build/
+*.log 

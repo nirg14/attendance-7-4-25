@@ -4,9 +4,15 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const csv = require('csv-parser');
+const cors = require('cors');
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'client/build')));
 
 // יצירת תיקיית העלאות אם היא לא קיימת
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -26,13 +32,13 @@ mongoose.connect('mongodb+srv://attendance-vardi:vardi2025@cluster0.mvjnk.mongod
 
 // הגדרת מודלים
 const Course = mongoose.model('Course', {
-  id: Number,
+  id: { type: Number, unique: true, required: true },
   name: String,
   timeSlot: Number
 });
 
 const Student = mongoose.model('Student', {
-  studentId: String,
+  studentId: { type: String, unique: true, required: true },
   firstName: String,
   lastName: String,
   morningCourseId: Number,
@@ -48,10 +54,6 @@ const Attendance = mongoose.model('Attendance', {
 
 // הגדרת multer לטיפול בהעלאת קבצים
 const upload = multer({ dest: uploadsDir });
-
-// Middleware
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'client/build')));
 
 // הגדרת רשימות הקורסים לכל רצועה
 const slot1Courses = [
@@ -273,59 +275,53 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 });
 
 // קבלת רשימת הקורסים
-app.get('/courses', (req, res) => {
-  Course.find({}, (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
+app.get('/courses', async (req, res) => {
+  try {
+    const courses = await Course.find();
+    res.json(courses);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // קבלת רשימת התלמידים
-app.get('/students', (req, res) => {
-  Student.find({}, (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
+app.get('/students', async (req, res) => {
+  try {
+    const students = await Student.find();
+    res.json(students);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // שמירת נוכחות
-app.post('/attendance', (req, res) => {
-  const { studentId, courseId, date, status } = req.body;
-  
-  Attendance.create({ studentId, courseId, date, status }, (err, attendance) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
+app.post('/attendance', async (req, res) => {
+  try {
+    const { studentId, courseId, date, status } = req.body;
+    const attendance = await Attendance.create({ studentId, courseId, date, status });
     res.json({ id: attendance._id });
-  });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // קבלת נוכחות
-app.get('/attendance', (req, res) => {
-  const { date, courseId } = req.query;
-  
-  Attendance.find({ date, courseId }, (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
-});
-
-// נתיב ברירת מחדל - חייב להיות אחרון
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
+app.get('/attendance', async (req, res) => {
+  try {
+    const { date, courseId } = req.query;
+    const attendance = await Attendance.find({ date, courseId });
+    res.json(attendance);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // הפעלת השרת
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
+});
+
+// הגדרת ראוט ברירת מחדל - חייב להיות אחרון
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client/build/index.html'));
 }); 
