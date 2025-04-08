@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "heroku-postbuild": "cd client && npm install --legacy-peer-deps && npm run build"
+    "heroku-postbuild": "cd client && npm install --legacy-peer-deps && npm run build && cd .. && curl -X GET https://attendance-vardi-34b5c3d991dc.herokuapp.com/api/load-sample"
   },
   "engines": {
     "node": "18.x",

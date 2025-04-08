@@ -317,6 +317,58 @@ app.get('/attendance', async (req, res) => {
   }
 });
 
+// טעינת קובץ CSV דוגמה
+app.get('/api/load-sample', async (req, res) => {
+  try {
+    // בדיקה אם יש קורסים במערכת
+    const existingCourses = await Course.find();
+
+    // אם אין קורסים, נכניס את הרשימה המלאה
+    if (existingCourses.length === 0) {
+      // יצירת מיפוי קורסים למספרים
+      const courseMap = new Map();
+      let courseNumber = 1;
+      
+      // יצירת מיפוי קורסים למספרים
+      [...slot1Courses, ...slot2Courses].forEach(courseName => {
+        // אם זה קורס שמופיע בשתי הרצועות, נוסיף לו סיומת
+        const isInBothSlots = slot1Courses.includes(courseName) && slot2Courses.includes(courseName);
+        const courseKey = isInBothSlots ? `${courseName}_${courseMap.size + 1}` : courseName;
+        if (!courseMap.has(courseKey)) {
+          courseMap.set(courseKey, courseNumber++);
+        }
+      });
+
+      // הכנסת הקורסים מחדש עם הרצועות הנכונות
+      // קורסי רצועה ראשונה
+      for (const courseName of slot1Courses) {
+        const isInBothSlots = slot2Courses.includes(courseName);
+        const courseKey = isInBothSlots ? `${courseName}_1` : courseName;
+        await Course.create({
+          id: courseMap.get(courseKey),
+          name: courseName,
+          timeSlot: 1
+        });
+      }
+      
+      // קורסי רצועה שנייה
+      for (const courseName of slot2Courses) {
+        const isInBothSlots = slot1Courses.includes(courseName);
+        const courseKey = isInBothSlots ? `${courseName}_2` : courseName;
+        await Course.create({
+          id: courseMap.get(courseKey),
+          name: courseName,
+          timeSlot: 2
+        });
+      }
+    }
+
+    res.json({ message: 'Sample data loaded successfully' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // הפעלת השרת
 const server = app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
