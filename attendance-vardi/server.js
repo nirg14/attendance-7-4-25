@@ -172,8 +172,8 @@ app.post('/api/init/students', async (req, res) => {
   }
 });
 
-// נתיב ליצירת משתמש ראשוני
-app.post('/api/init-user', async (req, res) => {
+// נתיב אתחול משתמש ראשוני
+app.post('/api/init/user', async (req, res) => {
   try {
     // בדיקה אם כבר קיים משתמש
     const existingUser = await User.findOne();
@@ -187,15 +187,15 @@ app.post('/api/init-user', async (req, res) => {
       username: 'admin',
       password: hashedPassword
     });
-
     await user.save();
+
     res.json({ message: 'משתמש ראשוני נוצר בהצלחה' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-// טיפול בבקשות שלא נמצאו - מפנה ל-React
+// נתיב ברירת מחדל - מחזיר את אפליקציית React
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
 });
