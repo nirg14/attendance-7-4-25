@@ -15,9 +15,13 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 // התחברות למונגו
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/attendance', {
+mongoose.connect('mongodb+srv://attendance-vardi:vardi2025@cluster0.mvjnk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
   useNewUrlParser: true,
   useUnifiedTopology: true
+}).then(() => {
+  console.log('התחברות למסד הנתונים הצליחה');
+}).catch((error) => {
+  console.error('שגיאה בהתחברות למסד הנתונים:', error);
 });
 
 // הגדרת מודלים
