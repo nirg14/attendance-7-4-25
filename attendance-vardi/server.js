@@ -23,7 +23,17 @@ app.use(bodyParser.json());
 // שירות קבצים סטטיים מ-build של React
 app.use(express.static(path.join(__dirname, 'client/build')));
 
-const upload = multer({ dest: 'uploads/' });
+// Middleware לטיפול בקבצים
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
+// הגדרת תיקיית העלאת קבצים
+const upload = multer({ 
+  dest: path.join(__dirname, 'uploads/'),
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB
+  }
+});
 
 // מודלים למסד הנתונים
 const courseSchema = new mongoose.Schema({
@@ -178,7 +188,7 @@ app.post('/api/init/user', async (req, res) => {
 });
 
 // נקודת קצה להעלאת נתונים מ-CSV
-app.post('/api/upload', multer({ dest: 'uploads/' }).single('file'), async (req, res) => {
+app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
     console.log('Received file upload request');
     console.log('Request body:', req.body);
@@ -192,26 +202,18 @@ app.post('/api/upload', multer({ dest: 'uploads/' }).single('file'), async (req,
     const filePath = req.file.path;
     console.log('File saved at:', filePath);
     
-    const csvData = await fs.promises.readFile(filePath, 'utf8');
-    console.log('CSV data read successfully');
-    
-    // מחיקת הקובץ לאחר הקריאה
-    await fs.promises.unlink(filePath);
-    console.log('Temporary file deleted');
-
-    const lines = csvData.split('\n');
-    const headers = lines[0].split(',').map(h => h.trim());
-    console.log('CSV headers:', headers);
-
     const courses = new Set();
     const students = [];
-    const courseMap = new Map(); // מפה לשמירת מיפוי בין שמות קורסים למספרים
+    const courseMap = new Map();
 
+    console.log('Starting to process CSV file...');
+    
     // קריאת קובץ הנתונים
     await new Promise((resolve, reject) => {
       fs.createReadStream(filePath)
         .pipe(csv())
         .on('data', (data) => {
+          console.log('Processing row:', data);
           // הוספת קורסים למפה
           if (data['קורס רצועה ראשונה']) {
             courses.add(data['קורס רצועה ראשונה']);
@@ -228,15 +230,29 @@ app.post('/api/upload', multer({ dest: 'uploads/' }).single('file'), async (req,
             afternoonCourse: data['קורס רצועה שנייה']
           });
         })
-        .on('end', resolve)
-        .on('error', reject);
+        .on('end', () => {
+          console.log('Finished processing CSV file');
+          console.log('Found courses:', Array.from(courses));
+          console.log('Found students:', students.length);
+          resolve();
+        })
+        .on('error', (error) => {
+          console.error('Error processing CSV:', error);
+          reject(error);
+        });
     });
+
+    // מחיקת הקובץ הזמני
+    await fs.promises.unlink(filePath);
+    console.log('Temporary file deleted');
 
     // יצירת מיפוי קורסים למספרים
     let courseNumber = 1;
     for (const courseName of courses) {
       courseMap.set(courseName, courseNumber++);
     }
+
+    console.log('Course mapping:', Object.fromEntries(courseMap));
 
     // המרת שמות קורסים למספרים
     const processedStudents = students.map(student => ({
@@ -249,16 +265,22 @@ app.post('/api/upload', multer({ dest: 'uploads/' }).single('file'), async (req,
     const processedCourses = Array.from(courses).map((courseName, index) => ({
       id: courseMap.get(courseName),
       name: courseName,
-      timeSlot: index < courses.size / 2 ? 1 : 2 // חלוקה אוטומטית לרצועות
+      timeSlot: index < courses.size / 2 ? 1 : 2
     }));
 
+    console.log('Processed courses:', processedCourses);
+    console.log('Processed students:', processedStudents);
+
     // מחיקת נתונים קיימים
+    console.log('Deleting existing data...');
     await Course.deleteMany({});
     await Student.deleteMany({});
 
     // הוספת נתונים חדשים
+    console.log('Inserting new data...');
     await Course.insertMany(processedCourses);
     await Student.insertMany(processedStudents);
+    console.log('Data inserted successfully');
 
     res.json({ 
       success: true, 
