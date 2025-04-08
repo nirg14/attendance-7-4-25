@@ -82,7 +82,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'client/build')));
 
 // טיפול בהעלאת קובץ CSV
-app.post('/upload', upload.single('file'), async (req, res) => {
+app.post('/api/upload', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'לא נבחר קובץ' });
   }
@@ -245,6 +245,67 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     console.error('שגיאה בעיבוד הקובץ:', error);
     res.status(500).json({ error: error.message });
   }
+});
+
+// קבלת רשימת הקורסים לפי רצועה
+app.get('/api/courses/slot1', (req, res) => {
+  db.all('SELECT * FROM courses WHERE timeSlot = 1', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
+
+app.get('/api/courses/slot2', (req, res) => {
+  db.all('SELECT * FROM courses WHERE timeSlot = 2', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
+
+// קבלת רשימת התלמידים
+app.get('/api/students', (req, res) => {
+  db.all('SELECT * FROM students', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
+
+// קבלת נתוני נוכחות לתאריך מסוים
+app.get('/api/attendance/:date', (req, res) => {
+  const date = req.params.date;
+  db.all('SELECT * FROM attendance WHERE date = ?', [date], (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
+
+// עדכון נוכחות
+app.post('/api/attendance', express.json(), (req, res) => {
+  const { studentId, courseId, date, present } = req.body;
+  
+  db.run(
+    'INSERT OR REPLACE INTO attendance (studentId, courseId, date, status) VALUES (?, ?, ?, ?)',
+    [studentId, courseId, date, present ? 'present' : 'absent'],
+    (err) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json({ message: 'Attendance updated successfully' });
+    }
+  );
 });
 
 // קבלת רשימת הקורסים
