@@ -321,7 +321,7 @@ app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
 
-// הגדרת ראוט ברירת מחדל - חייב להיות אחרון
+// Handle React routing, return all requests to React app
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'client/build/index.html'));
 }); 
