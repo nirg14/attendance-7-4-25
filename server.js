@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const csv = require('csv-parser');
 const cors = require('cors');
+require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -21,7 +22,7 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 // התחברות למונגו
-mongoose.connect('mongodb+srv://attendance-vardi:vardi2025@cluster0.mvjnk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
+mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
 }).then(() => {
@@ -317,7 +318,7 @@ app.get('/attendance', async (req, res) => {
 });
 
 // הפעלת השרת
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
 
