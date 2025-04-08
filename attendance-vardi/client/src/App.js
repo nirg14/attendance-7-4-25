@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import './App.css';
 
@@ -59,6 +59,26 @@ const AttendanceSystem = () => {
   const [alertMessage, setAlertMessage] = useState('');
   const [alertType, setAlertType] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+
+  // בדיקת תלמידים שנוכחים בבוקר אך לא אחר הצהריים
+  const checkAfternoonAttendance = useCallback(() => {
+    const missingStudents = students.filter(student => {
+      const morningKey = `${student.id}_${student.morningCourse}_${date}`;
+      const afternoonKey = `${student.id}_${student.afternoonCourse}_${date}`;
+      
+      return (
+        attendanceData[morningKey]?.present === true && 
+        (!attendanceData[afternoonKey] || attendanceData[afternoonKey].present === false)
+      );
+    });
+    
+    if (missingStudents.length > 0) {
+      setAlertMessage(`שים לב: ${missingStudents.length} תלמידים נוכחים בבוקר אך חסרים אחר הצהריים`);
+      setAlertType('warning');
+    } else {
+      setAlertMessage('');
+    }
+  }, [students, date, attendanceData]);
 
   // טעינת נתונים מהשרת
   useEffect(() => {
@@ -138,26 +158,6 @@ const AttendanceSystem = () => {
       checkAfternoonAttendance();
     } catch (error) {
       console.error('Error updating attendance:', error);
-    }
-  };
-
-  // בדיקת תלמידים שנוכחים בבוקר אך לא אחר הצהריים
-  const checkAfternoonAttendance = () => {
-    const missingStudents = students.filter(student => {
-      const morningKey = `${student.id}_${student.morningCourse}_${date}`;
-      const afternoonKey = `${student.id}_${student.afternoonCourse}_${date}`;
-      
-      return (
-        attendanceData[morningKey]?.present === true && 
-        (!attendanceData[afternoonKey] || attendanceData[afternoonKey].present === false)
-      );
-    });
-    
-    if (missingStudents.length > 0) {
-      setAlertMessage(`שים לב: ${missingStudents.length} תלמידים נוכחים בבוקר אך חסרים אחר הצהריים`);
-      setAlertType('warning');
-    } else {
-      setAlertMessage('');
     }
   };
 
