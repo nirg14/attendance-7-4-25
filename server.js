@@ -1,386 +1,317 @@
 const express = require('express');
-const cors = require('cors');
-const bodyParser = require('body-parser');
-const path = require('path');
-const mongoose = require('mongoose');
-const csv = require('csv-parser');
-const fs = require('fs');
+const sqlite3 = require('sqlite3').verbose();
 const multer = require('multer');
-require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+const csv = require('csv-parser');
 
-// אתחול אפליקציית Express
 const app = express();
+const port = process.env.PORT || 3000;
+
+// הגדרת מסד הנתונים
+const db = new sqlite3.Database('attendance.db');
+
+// יצירת טבלאות אם הן לא קיימות
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS courses (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    timeSlot INTEGER NOT NULL
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS students (
+    id INTEGER PRIMARY KEY,
+    studentId TEXT NOT NULL,
+    firstName TEXT NOT NULL,
+    lastName TEXT NOT NULL,
+    morningCourseId INTEGER,
+    afternoonCourseId INTEGER,
+    FOREIGN KEY (morningCourseId) REFERENCES courses (id),
+    FOREIGN KEY (afternoonCourseId) REFERENCES courses (id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    studentId INTEGER NOT NULL,
+    courseId INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    status TEXT NOT NULL,
+    FOREIGN KEY (studentId) REFERENCES students (id),
+    FOREIGN KEY (courseId) REFERENCES courses (id)
+  )`);
+});
+
+// הגדרת רשימות הקורסים לכל רצועה
+const slot1Courses = [
+  'איך בונים את זה?',
+  'ביטים חרוזים חיים',
+  'בינה מלאכותית',
+  'ביצוע יצירה והפקה',
+  'דיבייט',
+  'כתיבת מדע בדיוני',
+  'לחשוב בחמישה מימדים',
+  'מייקרים',
+  'משחק החיים',
+  'סטודיו פתוח',
+  'תורת המשחקים כלכלה',
+  'תקשורת חזותית',
+  'rescue',
+  'time',
+  '*לא ידוע1*'
+];
+
+const slot2Courses = [
+  'רכבת ההיפ הופ',
+  'על קצה המזלג',
+  'חוויה פיננסית',
+  'עיצוב דיגיטלי',
+  'משחקי תפקידים',
+  'יומן ויזואלי',
+  'ביצוע יצירה והפקה',
+  'דיבייט',
+  'הכר את האויב',
+  'החממה להנדסת צעצועים',
+  '*לא ידוע2*'
+];
+
+// הגדרת multer לטיפול בהעלאת קבצים
+const upload = multer({ dest: 'uploads/' });
 
 // Middleware
-app.use(cors({
-  origin: '*',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-app.use(bodyParser.json());
-
-// שירות קבצים סטטיים מ-build של React
-app.use(express.static(path.join(__dirname, 'client/build')));
-
-// Middleware לטיפול בקבצים
-app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+app.use(express.static('public'));
 
-// הגדרת תיקיית העלאת קבצים
-const upload = multer({ 
-  dest: path.join(__dirname, 'uploads/'),
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB
+// טיפול בהעלאת קובץ CSV
+app.post('/upload', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'לא נבחר קובץ' });
   }
-});
 
-// מודלים למסד הנתונים
-const courseSchema = new mongoose.Schema({
-  id: Number,
-  name: String,
-  timeSlot: Number,
-});
-
-const studentSchema = new mongoose.Schema({
-  id: Number,
-  name: String,
-  morningCourse: Number,
-  afternoonCourse: Number
-});
-
-const attendanceSchema = new mongoose.Schema({
-  date: String,
-  studentId: Number,
-  courseId: Number,
-  present: Boolean
-});
-
-const Course = mongoose.model('Course', courseSchema);
-const Student = mongoose.model('Student', studentSchema);
-const Attendance = mongoose.model('Attendance', attendanceSchema);
-
-// נתיבי API
-
-// קבלת כל הקורסים
-app.get('/api/courses', async (req, res) => {
   try {
-    const courses = await Course.find().sort({ timeSlot: 1, name: 1 });
-    res.json(courses);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// קבלת קורסי רצועה ראשונה
-app.get('/api/courses/slot1', async (req, res) => {
-  try {
-    const courses = await Course.find({ timeSlot: 1 }).sort({ name: 1 });
-    res.json(courses);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// קבלת קורסי רצועה שנייה
-app.get('/api/courses/slot2', async (req, res) => {
-  try {
-    const courses = await Course.find({ timeSlot: 2 }).sort({ name: 1 });
-    res.json(courses);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// קבלת כל התלמידים
-app.get('/api/students', async (req, res) => {
-  try {
-    const students = await Student.find();
-    res.json(students);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// קבלת נתוני נוכחות לפי תאריך
-app.get('/api/attendance/:date', async (req, res) => {
-  try {
-    const attendance = await Attendance.find({ date: req.params.date });
-    res.json(attendance);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// הוספה או עדכון נוכחות
-app.post('/api/attendance', async (req, res) => {
-  const { date, studentId, courseId, present } = req.body;
-  
-  try {
-    // בדיקה אם כבר קיים רשומה
-    const existingRecord = await Attendance.findOne({ 
-      date, 
-      studentId, 
-      courseId 
-    });
-    
-    if (existingRecord) {
-      // עדכון רשומה קיימת
-      existingRecord.present = present;
-      await existingRecord.save();
-      res.json(existingRecord);
-    } else {
-      // יצירת רשומה חדשה
-      const newAttendance = new Attendance({
-        date,
-        studentId,
-        courseId,
-        present
+    // בדיקה אם יש קורסים במערכת
+    const existingCourses = await new Promise((resolve, reject) => {
+      db.all('SELECT * FROM courses', (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
       });
+    });
+
+    // אם אין קורסים, נכניס את הרשימה המלאה
+    if (existingCourses.length === 0) {
+      // יצירת מיפוי קורסים למספרים
+      const courseMap = new Map();
+      let courseNumber = 1;
       
-      const savedAttendance = await newAttendance.save();
-      res.status(201).json(savedAttendance);
-    }
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-});
+      // יצירת מיפוי קורסים למספרים
+      [...slot1Courses, ...slot2Courses].forEach(courseName => {
+        // אם זה קורס שמופיע בשתי הרצועות, נוסיף לו סיומת
+        const isInBothSlots = slot1Courses.includes(courseName) && slot2Courses.includes(courseName);
+        const courseKey = isInBothSlots ? `${courseName}_${courseMap.size + 1}` : courseName;
+        if (!courseMap.has(courseKey)) {
+          courseMap.set(courseKey, courseNumber++);
+        }
+      });
 
-// נתיבים לאתחול נתונים
-
-// הוספת תלמידים
-app.post('/api/init/students', async (req, res) => {
-  try {
-    await Student.deleteMany({});
-    const students = await Student.insertMany([
-      { id: 1, name: 'איתי כהן', morningCourse: 1, afternoonCourse: 4 },
-      { id: 2, name: 'מיכל לוי', morningCourse: 1, afternoonCourse: 5 },
-      { id: 3, name: 'יונתן גולן', morningCourse: 2, afternoonCourse: 4 },
-      { id: 4, name: 'שירה אברהמי', morningCourse: 2, afternoonCourse: 6 },
-      { id: 5, name: 'דניאל רוזן', morningCourse: 3, afternoonCourse: 5 },
-      { id: 6, name: 'נועה פרץ', morningCourse: 3, afternoonCourse: 6 }
-    ]);
-    res.status(201).json(students);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-});
-
-// נתיב אתחול משתמש ראשוני
-app.post('/api/init/user', async (req, res) => {
-  try {
-    // בדיקה אם כבר קיים משתמש
-    const existingUser = await User.findOne();
-    if (existingUser) {
-      return res.status(400).json({ message: 'משתמש כבר קיים במערכת' });
-    }
-
-    // יצירת משתמש ראשוני
-    const hashedPassword = await bcrypt.hash('admin123', 10);
-    const user = new User({
-      username: 'admin',
-      password: hashedPassword
-    });
-    await user.save();
-
-    res.json({ message: 'משתמש ראשוני נוצר בהצלחה' });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// נקודת קצה להעלאת נתונים מ-CSV
-app.post('/api/upload', upload.single('file'), async (req, res) => {
-  try {
-    console.log('התקבלה בקשה להעלאת קובץ');
-    console.log('גוף הבקשה:', req.body);
-    console.log('קובץ:', req.file);
-
-    if (!req.file) {
-      console.log('לא התקבל קובץ');
-      return res.status(400).json({ error: 'לא נבחר קובץ' });
-    }
-
-    const filePath = req.file.path;
-    console.log('הקובץ נשמר בנתיב:', filePath);
-    
-    // הגדרת רשימות הקורסים המדויקות
-    const slot1Courses = [
-      'איך בונים את זה?',
-      'ביטים חרוזים חיים',
-      'בינה מלאכותית',
-      'ביצוע יצירה והפקה',
-      'דיבייט',
-      'כתיבת מדע בדיוני',
-      'לחשוב בחמישה מימדים',
-      'מייקרים',
-      'משחק החיים',
-      'סטודיו פתוח',
-      'תורת המשחקים כלכלה',
-      'תקשורת חזותית',
-      'rescue',
-      'time',
-      '*לא ידוע1*'
-    ];
-
-    const slot2Courses = [
-      'רכבת ההיפ הופ',
-      'על קצה המזלג',
-      'חוויה פיננסית',
-      'עיצוב דיגיטלי',
-      'משחקי תפקידים',
-      'יומן ויזואלי',
-      'ביצוע יצירה והפקה',
-      'דיבייט',
-      'הכר את האויב',
-      'החממה להנדסת צעצועים',
-      '*לא ידוע2*'
-    ];
-
-    // מחיקת כל הקורסים הקיימים
-    console.log('מוחק את כל הקורסים הקיימים...');
-    await Course.deleteMany({});
-
-    // יצירת מיפוי קורסים למספרים
-    const courseMap = new Map();
-    let courseNumber = 1;
-    
-    // יצירת מיפוי קורסים למספרים
-    [...slot1Courses, ...slot2Courses].forEach(courseName => {
-      if (!courseMap.has(courseName)) {
-        courseMap.set(courseName, courseNumber++);
-      }
-    });
-
-    // הכנסת הקורסים מחדש עם הרצועות הנכונות
-    const coursesToInsert = [
-      // קורסי רצועה ראשונה
-      ...slot1Courses.map(courseName => ({
-        id: courseMap.get(courseName),
-        name: courseName,
-        timeSlot: 1
-      })),
-      // קורסי רצועה שנייה
-      ...slot2Courses.map(courseName => ({
-        id: courseMap.get(courseName),
-        name: courseName,
-        timeSlot: 2
-      }))
-    ];
-
-    console.log('מכניס את הקורסים מחדש...');
-    await Course.insertMany(coursesToInsert);
-    console.log('הקורסים הוכנסו בהצלחה');
-
-    const students = [];
-
-    console.log('מתחיל לעבד את קובץ ה-CSV...');
-    
-    // קריאת קובץ הנתונים
-    await new Promise((resolve, reject) => {
-      fs.createReadStream(filePath)
-        .pipe(csv({
-          separator: ',',
-          mapHeaders: ({ header }) => header.trim()
-        }))
-        .on('headers', (headers) => {
-          console.log('כותרות הקובץ:', headers);
+      // הכנסת הקורסים מחדש עם הרצועות הנכונות
+      const coursesToInsert = [
+        // קורסי רצועה ראשונה
+        ...slot1Courses.map(courseName => {
+          const isInBothSlots = slot2Courses.includes(courseName);
+          const courseKey = isInBothSlots ? `${courseName}_1` : courseName;
+          return {
+            id: courseMap.get(courseKey),
+            name: courseName,
+            timeSlot: 1
+          };
+        }),
+        // קורסי רצועה שנייה
+        ...slot2Courses.map(courseName => {
+          const isInBothSlots = slot1Courses.includes(courseName);
+          const courseKey = isInBothSlots ? `${courseName}_2` : courseName;
+          return {
+            id: courseMap.get(courseKey),
+            name: courseName,
+            timeSlot: 2
+          };
         })
+      ];
+
+      // הכנסת הקורסים החדשים
+      for (const course of coursesToInsert) {
+        await new Promise((resolve, reject) => {
+          db.run('INSERT INTO courses (id, name, timeSlot) VALUES (?, ?, ?)', 
+            [course.id, course.name, course.timeSlot], 
+            (err) => {
+              if (err) reject(err);
+              else resolve();
+            });
+        });
+      }
+    }
+
+    // קריאת הקובץ שהועלה
+    const students = [];
+    const courses = new Set();
+    
+    await new Promise((resolve, reject) => {
+      fs.createReadStream(req.file.path)
+        .pipe(csv({ trim: true }))
         .on('data', (data) => {
-          console.log('נתוני שורה גולמיים:', data);
+          // בדיקת תקינות הנתונים
+          if (!data['מספר תלמיד'] || !data['שם פרטי'] || !data['שם משפחה'] || 
+              !data['קורס רצועה ראשונה'] || !data['קורס רצועה שנייה']) {
+            reject(new Error('חסרים שדות חובה בקובץ'));
+            return;
+          }
+
+          // ניקוי מספר התלמיד
+          const studentId = data['מספר תלמיד'].toString().replace(/[^0-9]/g, '');
           
-          // בדיקת תקינות השדות הנדרשים
-          const studentId = parseInt(data['מספר תלמיד']);
-          const firstName = data['שם פרטי']?.trim();
-          const lastName = data['שם משפחה']?.trim();
-          const morningCourse = data['קורס רצועה ראשונה']?.trim();
-          const afternoonCourse = data['קורס רצועה שנייה']?.trim();
-
-          console.log('נתונים מעובדים:', {
-            studentId,
-            firstName,
-            lastName,
-            morningCourse,
-            afternoonCourse
-          });
-
-          if (!studentId || isNaN(studentId)) {
-            console.error('מספר תלמיד לא תקין:', data['מספר תלמיד']);
-            return;
-          }
-
-          if (!firstName || !lastName) {
-            console.error('שם תלמיד חסר:', studentId);
-            return;
-          }
-
-          if (!morningCourse || !afternoonCourse) {
-            console.error('קורסים חסרים עבור תלמיד:', studentId);
-            return;
-          }
-
-          // וידוא שהקורסים קיימים ברשימות המתאימות
+          // בדיקת תקינות הקורסים
+          const morningCourse = data['קורס רצועה ראשונה'];
+          const afternoonCourse = data['קורס רצועה שנייה'];
+          
           if (!slot1Courses.includes(morningCourse)) {
-            console.error('קורס רצועה ראשונה לא תקין:', morningCourse);
+            reject(new Error(`קורס לא תקין ברצועה ראשונה: ${morningCourse}`));
             return;
           }
-
+          
           if (!slot2Courses.includes(afternoonCourse)) {
-            console.error('קורס רצועה שנייה לא תקין:', afternoonCourse);
+            reject(new Error(`קורס לא תקין ברצועה שנייה: ${afternoonCourse}`));
             return;
           }
 
           students.push({
-            id: studentId,
-            name: `${firstName} ${lastName}`,
-            morningCourse: courseMap.get(morningCourse),
-            afternoonCourse: courseMap.get(afternoonCourse)
+            studentId,
+            firstName: data['שם פרטי'],
+            lastName: data['שם משפחה'],
+            morningCourse,
+            afternoonCourse
           });
+
+          courses.add(morningCourse);
+          courses.add(afternoonCourse);
         })
         .on('end', resolve)
         .on('error', reject);
     });
 
-    if (students.length === 0) {
-      throw new Error('לא נמצאו תלמידים בקובץ');
+    // מחיקת התלמידים הקיימים
+    await new Promise((resolve, reject) => {
+      db.run('DELETE FROM students', (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    // הכנסת התלמידים החדשים
+    for (const student of students) {
+      // מציאת ה-ID של הקורסים
+      const morningCourseId = await new Promise((resolve, reject) => {
+        db.get('SELECT id FROM courses WHERE name = ? AND timeSlot = 1', 
+          [student.morningCourse], (err, row) => {
+            if (err) reject(err);
+            else resolve(row ? row.id : null);
+          });
+      });
+
+      const afternoonCourseId = await new Promise((resolve, reject) => {
+        db.get('SELECT id FROM courses WHERE name = ? AND timeSlot = 2', 
+          [student.afternoonCourse], (err, row) => {
+            if (err) reject(err);
+            else resolve(row ? row.id : null);
+          });
+      });
+
+      await new Promise((resolve, reject) => {
+        db.run('INSERT INTO students (studentId, firstName, lastName, morningCourseId, afternoonCourseId) VALUES (?, ?, ?, ?, ?)',
+          [student.studentId, student.firstName, student.lastName, morningCourseId, afternoonCourseId],
+          (err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+      });
     }
 
-    // מחיקת הקובץ הזמני
-    await fs.promises.unlink(filePath);
-    console.log('הקובץ הזמני נמחק');
-
-    // מחיקת רשימת התלמידים הקיימת והכנסת הרשימה החדשה
-    console.log('מעדכן את רשימת התלמידים...');
-    await Student.deleteMany({});
-    await Student.insertMany(students);
-    console.log('רשימת התלמידים עודכנה בהצלחה');
+    // מחיקת הקובץ שהועלה
+    fs.unlinkSync(req.file.path);
 
     res.json({ 
-      success: true, 
-      message: 'הנתונים הועלו בהצלחה',
-      students
+      message: 'הקובץ הועלה בהצלחה',
+      students: students.length,
+      courses: courses.size
     });
   } catch (error) {
-    console.error('שגיאה בהעלאת נתונים:', error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('שגיאה בעיבוד הקובץ:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// נתיב ברירת מחדל - מחזיר את אפליקציית React
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
+// קבלת רשימת הקורסים
+app.get('/courses', (req, res) => {
+  db.all('SELECT * FROM courses ORDER BY timeSlot, name', (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
 });
 
-// התחברות למסד נתונים והפעלת השרת
-const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost/attendance';
+// קבלת רשימת התלמידים
+app.get('/students', (req, res) => {
+  db.all(`
+    SELECT s.*, 
+           c1.name as morningCourseName,
+           c2.name as afternoonCourseName
+    FROM students s
+    LEFT JOIN courses c1 ON s.morningCourseId = c1.id
+    LEFT JOIN courses c2 ON s.afternoonCourseId = c2.id
+    ORDER BY s.lastName, s.firstName
+  `, (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
 
-mongoose.connect(MONGODB_URI, { 
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => {
-  console.log('Connected to MongoDB');
-  app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
-})
-.catch(err => console.error('Could not connect to MongoDB', err));
+// שמירת נוכחות
+app.post('/attendance', (req, res) => {
+  const { studentId, courseId, date, status } = req.body;
+  
+  db.run('INSERT INTO attendance (studentId, courseId, date, status) VALUES (?, ?, ?, ?)',
+    [studentId, courseId, date, status],
+    function(err) {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json({ id: this.lastID });
+    });
+});
+
+// קבלת נוכחות
+app.get('/attendance', (req, res) => {
+  const { date, courseId } = req.query;
+  
+  db.all(`
+    SELECT a.*, s.firstName, s.lastName, s.studentId
+    FROM attendance a
+    JOIN students s ON a.studentId = s.id
+    WHERE a.date = ? AND a.courseId = ?
+    ORDER BY s.lastName, s.firstName
+  `, [date, courseId], (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+});
+
+// הפעלת השרת
+app.listen(port, () => {
+  console.log(`השרת פועל על פורט ${port}`);
+}); 
