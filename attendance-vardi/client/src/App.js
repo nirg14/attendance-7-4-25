@@ -50,7 +50,6 @@ const LoginForm = ({ onLogin }) => {
 
 const AttendanceSystem = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  // מידע על הקורסים והתלמידים
   const [courses, setCourses] = useState([]);
   const [students, setStudents] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState(null);
@@ -79,6 +78,27 @@ const AttendanceSystem = () => {
       setAlertMessage('');
     }
   }, [students, date, attendanceData]);
+
+  // הכנת מידע על תלמידים בכל קורס
+  useEffect(() => {
+    if (courses.length > 0 && students.length > 0) {
+      const updatedCourses = courses.map(course => {
+        const courseStudents = students.filter(student => 
+          (student.morningCourse === course.id && course.timeSlot === 1) || 
+          (student.afternoonCourse === course.id && course.timeSlot === 2)
+        );
+        return { ...course, students: courseStudents };
+      });
+      setCourses(updatedCourses);
+    }
+  }, [courses, students]);
+
+  // בדיקת נוכחות אחרי כל עדכון של הנתונים
+  useEffect(() => {
+    if (courses.length > 0 && students.length > 0) {
+      checkAfternoonAttendance();
+    }
+  }, [courses, students, attendanceData, checkAfternoonAttendance]);
 
   // טעינת נתונים מהשרת
   useEffect(() => {
@@ -112,23 +132,6 @@ const AttendanceSystem = () => {
 
     fetchData();
   }, [date]);
-
-  // הכנת מידע על תלמידים בכל קורס
-  useEffect(() => {
-    if (courses.length > 0 && students.length > 0) {
-      const updatedCourses = courses.map(course => {
-        const courseStudents = students.filter(student => 
-          (student.morningCourse === course.id && course.timeSlot === 1) || 
-          (student.afternoonCourse === course.id && course.timeSlot === 2)
-        );
-        return { ...course, students: courseStudents };
-      });
-      setCourses(updatedCourses);
-      
-      // בדיקת תלמידים שנוכחים בבוקר אך לא אחר הצהריים
-      checkAfternoonAttendance();
-    }
-  }, [courses, students, attendanceData, checkAfternoonAttendance]);
 
   // עדכון נוכחות תלמיד
   const toggleAttendance = async (studentId, courseId, timeSlot) => {
