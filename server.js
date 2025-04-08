@@ -235,46 +235,40 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       '*לא ידוע2*'
     ];
 
-    // קבלת הקורסים הקיימים מהמסד נתונים
-    const existingCourses = await Course.find();
+    // מחיקת כל הקורסים הקיימים
+    console.log('מוחק את כל הקורסים הקיימים...');
+    await Course.deleteMany({});
+
+    // יצירת מיפוי קורסים למספרים
     const courseMap = new Map();
+    let courseNumber = 1;
+    
+    // יצירת מיפוי קורסים למספרים
+    [...slot1Courses, ...slot2Courses].forEach(courseName => {
+      if (!courseMap.has(courseName)) {
+        courseMap.set(courseName, courseNumber++);
+      }
+    });
 
-    // אם אין קורסים במערכת, נכניס אותם
-    if (existingCourses.length === 0) {
-      console.log('אין קורסים במערכת, מכניס את רשימת הקורסים המלאה...');
-      let courseNumber = 1;
-      
-      // יצירת מיפוי קורסים למספרים
-      [...slot1Courses, ...slot2Courses].forEach(courseName => {
-        if (!courseMap.has(courseName)) {
-          courseMap.set(courseName, courseNumber++);
-        }
-      });
+    // הכנסת הקורסים מחדש עם הרצועות הנכונות
+    const coursesToInsert = [
+      // קורסי רצועה ראשונה
+      ...slot1Courses.map(courseName => ({
+        id: courseMap.get(courseName),
+        name: courseName,
+        timeSlot: 1
+      })),
+      // קורסי רצועה שנייה
+      ...slot2Courses.map(courseName => ({
+        id: courseMap.get(courseName),
+        name: courseName,
+        timeSlot: 2
+      }))
+    ];
 
-      const coursesToInsert = [
-        // קורסי רצועה ראשונה
-        ...slot1Courses.map(courseName => ({
-          id: courseMap.get(courseName),
-          name: courseName,
-          timeSlot: 1
-        })),
-        // קורסי רצועה שנייה
-        ...slot2Courses.map(courseName => ({
-          id: courseMap.get(courseName),
-          name: courseName,
-          timeSlot: 2
-        }))
-      ];
-
-      await Course.insertMany(coursesToInsert);
-      console.log('הקורסים הוכנסו בהצלחה');
-    } else {
-      console.log('משתמש בקורסים הקיימים במערכת');
-      // יצירת מיפוי מהקורסים הקיימים
-      existingCourses.forEach(course => {
-        courseMap.set(course.name, course.id);
-      });
-    }
+    console.log('מכניס את הקורסים מחדש...');
+    await Course.insertMany(coursesToInsert);
+    console.log('הקורסים הוכנסו בהצלחה');
 
     const students = [];
 
