@@ -79,7 +79,7 @@ const upload = multer({ dest: 'uploads/' });
 
 // Middleware
 app.use(express.json());
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'client/build')));
 
 // טיפול בהעלאת קובץ CSV
 app.post('/upload', upload.single('file'), async (req, res) => {
@@ -311,7 +311,12 @@ app.get('/attendance', (req, res) => {
   });
 });
 
+// נתיב ברירת מחדל - חייב להיות אחרון
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
+});
+
 // הפעלת השרת
 app.listen(port, () => {
-  console.log(`השרת פועל על פורט ${port}`);
+  console.log(`Server is running on port ${port}`);
 }); 
