@@ -202,9 +202,50 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     const filePath = req.file.path;
     console.log('הקובץ נשמר בנתיב:', filePath);
     
+    // הגדרת רשימות הקורסים המדויקות
+    const slot1Courses = [
+      'איך בונים את זה?',
+      'ביטים חרוזים חיים',
+      'בינה מלאכותית',
+      'ביצוע יצירה והפקה',
+      'דיבייט',
+      'כתיבת מדע בדיוני',
+      'לחשוב בחמישה מימדים',
+      'מייקרים',
+      'משחק החיים',
+      'סטודיו פתוח',
+      'תורת המשחקים כלכלה',
+      'תקשורת חזותית',
+      'rescue',
+      'time',
+      '*לא ידוע1*'
+    ];
+
+    const slot2Courses = [
+      'רכבת ההיפ הופ',
+      'על קצה המזלג',
+      'חוויה פיננסית',
+      'עיצוב דיגיטלי',
+      'משחקי תפקידים',
+      'יומן ויזואלי',
+      'ביצוע יצירה והפקה',
+      'דיבייט',
+      'הכר את האויב',
+      'החממה להנדסת צעצועים',
+      '*לא ידוע2*'
+    ];
+
     const courses = new Set();
     const students = [];
     const courseMap = new Map();
+    let courseNumber = 1;
+
+    // יצירת מיפוי קורסים למספרים
+    [...slot1Courses, ...slot2Courses].forEach(courseName => {
+      if (!courseMap.has(courseName)) {
+        courseMap.set(courseName, courseNumber++);
+      }
+    });
 
     console.log('מתחיל לעבד את קובץ ה-CSV...');
     
@@ -251,11 +292,20 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
             return;
           }
 
-          // הוספת קורסים למפה
+          // וידוא שהקורסים קיימים ברשימות המתאימות
+          if (!slot1Courses.includes(morningCourse)) {
+            console.error('קורס רצועה ראשונה לא תקין:', morningCourse);
+            return;
+          }
+
+          if (!slot2Courses.includes(afternoonCourse)) {
+            console.error('קורס רצועה שנייה לא תקין:', afternoonCourse);
+            return;
+          }
+
           courses.add(morningCourse);
           courses.add(afternoonCourse);
 
-          // הוספת תלמיד
           students.push({
             id: studentId,
             name: `${firstName} ${lastName}`,
@@ -263,74 +313,41 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
             afternoonCourse
           });
         })
-        .on('end', () => {
-          console.log('סיום עיבוד קובץ CSV');
-          console.log('קורסים שנמצאו:', Array.from(courses));
-          console.log('תלמידים שנמצאו:', students.length);
-          resolve();
-        })
-        .on('error', (error) => {
-          console.error('שגיאה בעיבוד CSV:', error);
-          reject(error);
-        });
+        .on('end', resolve)
+        .on('error', reject);
     });
 
     if (students.length === 0) {
       throw new Error('לא נמצאו תלמידים בקובץ');
     }
 
-    if (courses.size === 0) {
-      throw new Error('לא נמצאו קורסים בקובץ');
-    }
-
     // מחיקת הקובץ הזמני
     await fs.promises.unlink(filePath);
     console.log('הקובץ הזמני נמחק');
 
-    // יצירת מיפוי קורסים למספרים
-    let courseNumber = 1;
-    for (const courseName of courses) {
-      courseMap.set(courseName, courseNumber++);
-    }
+    // יצירת רשימת הקורסים המלאה עם הרצועות הנכונות
+    const processedCourses = [
+      // קורסי רצועה ראשונה
+      ...slot1Courses.map(courseName => ({
+        id: courseMap.get(courseName),
+        name: courseName,
+        timeSlot: 1
+      })),
+      // קורסי רצועה שנייה
+      ...slot2Courses.map(courseName => ({
+        id: courseMap.get(courseName),
+        name: courseName,
+        timeSlot: 2
+      }))
+    ];
 
-    console.log('מיפוי קורסים:', Object.fromEntries(courseMap));
-
-    // המרת שמות קורסים למספרים
+    // המרת שמות קורסים למספרים עבור תלמידים
     const processedStudents = students.map(student => ({
       id: student.id,
       name: student.name,
       morningCourse: courseMap.get(student.morningCourse),
       afternoonCourse: courseMap.get(student.afternoonCourse)
     }));
-
-    // יצירת מיפוי קורסים למספרים עם רצועות נכונות
-    const morningCourses = new Set();
-    const afternoonCourses = new Set();
-    
-    // מיון קורסים לרצועות
-    students.forEach(student => {
-      if (student.morningCourse) {
-        morningCourses.add(student.morningCourse);
-      }
-      if (student.afternoonCourse) {
-        afternoonCourses.add(student.afternoonCourse);
-      }
-    });
-
-    const processedCourses = [
-      // קורסי רצועה ראשונה
-      ...Array.from(morningCourses).map(courseName => ({
-        id: courseMap.get(courseName),
-        name: courseName,
-        timeSlot: 1
-      })),
-      // קורסי רצועה שנייה
-      ...Array.from(afternoonCourses).map(courseName => ({
-        id: courseMap.get(courseName),
-        name: courseName,
-        timeSlot: 2
-      }))
-    ];
 
     console.log('קורסים מעובדים:', processedCourses);
     console.log('תלמידים מעובדים:', processedStudents);
