@@ -210,20 +210,93 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     
     // קריאת קובץ הנתונים
     await new Promise((resolve, reject) => {
+      let headers = null;
+      
       fs.createReadStream(filePath)
         .pipe(csv())
-        .on('headers', (headers) => {
-          console.log('כותרות הקובץ:', headers);
+        .on('headers', (headerRow) => {
+          console.log('כותרות הקובץ:', headerRow);
+          headers = headerRow;
+          
+          // מציאת העמודות המתאימות
+          const idColumn = headers.find(h => 
+            h.includes('תלמיד') && h.includes('מספר') ||
+            h.includes('ID') ||
+            h.includes('ת.ז.')
+          );
+          
+          const firstNameColumn = headers.find(h => 
+            h.includes('פרטי') ||
+            h.includes('שם') && !h.includes('משפחה')
+          );
+          
+          const lastNameColumn = headers.find(h => 
+            h.includes('משפחה') ||
+            h.includes('שם') && !h.includes('פרטי')
+          );
+          
+          const morningCourseColumn = headers.find(h => 
+            h.includes('רצועה') && (h.includes('ראשונה') || h.includes('1')) ||
+            h.includes('בוקר') ||
+            h.includes('morning')
+          );
+          
+          const afternoonCourseColumn = headers.find(h => 
+            h.includes('רצועה') && (h.includes('שנייה') || h.includes('2')) ||
+            h.includes('צהריים') ||
+            h.includes('afternoon')
+          );
+          
+          console.log('עמודות שנמצאו:', {
+            idColumn,
+            firstNameColumn,
+            lastNameColumn,
+            morningCourseColumn,
+            afternoonCourseColumn
+          });
+          
+          if (!idColumn || !firstNameColumn || !lastNameColumn || !morningCourseColumn || !afternoonCourseColumn) {
+            reject(new Error('לא נמצאו כל העמודות הנדרשות בקובץ'));
+          }
         })
         .on('data', (data) => {
           console.log('נתוני שורה גולמיים:', data);
           
+          // מציאת העמודות המתאימות
+          const idColumn = headers.find(h => 
+            h.includes('תלמיד') && h.includes('מספר') ||
+            h.includes('ID') ||
+            h.includes('ת.ז.')
+          );
+          
+          const firstNameColumn = headers.find(h => 
+            h.includes('פרטי') ||
+            h.includes('שם') && !h.includes('משפחה')
+          );
+          
+          const lastNameColumn = headers.find(h => 
+            h.includes('משפחה') ||
+            h.includes('שם') && !h.includes('פרטי')
+          );
+          
+          const morningCourseColumn = headers.find(h => 
+            h.includes('רצועה') && (h.includes('ראשונה') || h.includes('1')) ||
+            h.includes('בוקר') ||
+            h.includes('morning')
+          );
+          
+          const afternoonCourseColumn = headers.find(h => 
+            h.includes('רצועה') && (h.includes('שנייה') || h.includes('2')) ||
+            h.includes('צהריים') ||
+            h.includes('afternoon')
+          );
+          
           // בדיקת תקינות השדות הנדרשים
-          const studentId = parseInt(data['מספר תלמיד']);
-          const firstName = data['שם פרטי']?.trim();
-          const lastName = data['שם משפחה']?.trim();
-          const morningCourse = data['קורס רצועה ראשונה']?.trim();
-          const afternoonCourse = data['קורס רצועה שנייה']?.trim();
+          const studentId = parseInt(data[idColumn]);
+          const firstName = data[firstNameColumn]?.trim();
+          const lastName = data[lastNameColumn]?.trim();
+          const morningCourse = data[morningCourseColumn]?.trim();
+          const afternoonCourse = data[afternoonCourseColumn]?.trim();
 
           console.log('נתונים מעובדים:', {
             studentId,
@@ -234,7 +307,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
           });
 
           if (!studentId || isNaN(studentId)) {
-            console.error('מספר תלמיד לא תקין:', data['מספר תלמיד']);
+            console.error('מספר תלמיד לא תקין:', data[idColumn]);
             return;
           }
 
