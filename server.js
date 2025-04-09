@@ -263,21 +263,18 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     // קריאת הקובץ
     await new Promise((resolve, reject) => {
       fs.createReadStream(req.file.path, { encoding: 'utf8' })
-        .pipe(csv({
-          separator: ',',
-          headers: ['studentId', 'lastName', 'firstName', 'morningCourse', 'afternoonCourse']
-        }))
+        .pipe(csv())
         .on('data', (data) => {
           // בדיקת שדות חובה
-          if (!data.studentId || !data.lastName || !data.firstName || 
-              !data.morningCourse || !data.afternoonCourse) {
+          if (!data['מספר תלמיד'] || !data['שם משפחה'] || !data['שם פרטי'] || 
+              !data['קורס רצועה ראשונה'] || !data['קורס רצועה שנייה']) {
             reject(new Error('חסרים שדות חובה בקובץ'));
             return;
           }
 
           // בדיקת תקינות הקורסים
-          const morningCourse = data.morningCourse.trim();
-          const afternoonCourse = data.afternoonCourse.trim();
+          const morningCourse = data['קורס רצועה ראשונה'].trim();
+          const afternoonCourse = data['קורס רצועה שנייה'].trim();
 
           if (!COURSES.slot1.includes(morningCourse)) {
             reject(new Error(`קורס לא תקין ברצועה ראשונה: ${morningCourse}`));
@@ -295,9 +292,9 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
           // הוספת התלמיד לרשימה
           students.push({
-            studentId: data.studentId,
-            firstName: data.firstName,
-            lastName: data.lastName,
+            studentId: data['מספר תלמיד'],
+            firstName: data['שם פרטי'],
+            lastName: data['שם משפחה'],
             morningCourseId: courseMap.get(morningCourse),
             afternoonCourseId: courseMap.get(afternoonCourse)
           });
